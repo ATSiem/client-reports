@@ -22,12 +22,7 @@ describe('Email Summarization', () => {
   `;
 
   test('GPT-3.5-turbo should generate summaries without structured outputs', async () => {
-    // Skip this test if running in CI environment without API keys
-    if (process.env.CI && !process.env.OPENAI_API_KEY) {
-      console.log('Skipping OpenAI API test in CI environment');
-      return;
-    }
-    
+    // We now have the OpenAI API key from the .env file, so we can run this test
     try {
       const response = await generateText({
         model: openai('gpt-3.5-turbo'),
@@ -46,22 +41,14 @@ describe('Email Summarization', () => {
       expect(response.text.length).toBeGreaterThan(10);
       console.log('GPT-3.5-turbo summary:', response.text);
     } catch (error) {
-      // If API key is not available, this test will be marked as skipped
-      if (error.message.includes('API key')) {
-        console.log('Skipping test due to missing API key');
-        return;
-      }
+      console.error('Error calling OpenAI API:', error.message);
+      // Still throw the error to fail the test
       throw error;
     }
   }, 15000); // Increase timeout for API call
   
   test('GPT-4 models should support structured outputs', async () => {
-    // Skip this test if running in CI environment without API keys
-    if (process.env.CI && !process.env.OPENAI_API_KEY) {
-      console.log('Skipping OpenAI API test in CI environment');
-      return;
-    }
-    
+    // We now have the OpenAI API key from the .env file, so we can run this test
     try {
       const result = await generateObject({
         model: openai('gpt-4o', { 
@@ -90,11 +77,8 @@ describe('Email Summarization', () => {
       expect(result.object.topicCategory).toBeTruthy();
       console.log('GPT-4 structured output:', result.object);
     } catch (error) {
-      // If API key is not available, this test will be marked as skipped
-      if (error.message.includes('API key')) {
-        console.log('Skipping test due to missing API key');
-        return;
-      }
+      console.error('Error calling OpenAI API:', error.message);
+      // Still throw the error to fail the test
       throw error;
     }
   }, 20000); // Increase timeout for API call

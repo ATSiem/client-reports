@@ -52,6 +52,8 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@babel/preset-env": "^7.26.9",
+    "@babel/preset-react": "^7.26.3",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/jest": "^29.5.14",
@@ -59,6 +61,8 @@
     "@types/pg": "^8.11.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
+    "dotenv": "^16.4.7",
     "drizzle-kit": "^0.30.4",
     "eslint": "^9.21.0",
     "jest": "^29.7.0",
@@ -71,6 +75,7 @@
     "tailwindcss-animate": "^1.0.7",
     "ts-jest": "^29.2.6",
     "tsx": "^4.19.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "uuid": "^11.1.0"
   }
 }
