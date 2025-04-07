@@ -114,45 +114,52 @@ if (typeof window === 'undefined') {
       `);
       
       // Add SQLite functions for vector operations
-      if (typeof sqlite.create_function === 'function') {
-        sqlite.create_function("cosine_similarity", (vec1Str, vec2Str) => {
-          try {
-            // Parse the JSON strings to arrays
-            const vec1 = JSON.parse(vec1Str);
-            const vec2 = JSON.parse(vec2Str);
-            
-            if (!Array.isArray(vec1) || !Array.isArray(vec2) || vec1.length !== vec2.length) {
-              console.error('Invalid vectors for cosine similarity', { 
-                vec1Length: Array.isArray(vec1) ? vec1.length : 'not array', 
-                vec2Length: Array.isArray(vec2) ? vec2.length : 'not array' 
-              });
+      try {
+        // Use type assertion to access the create_function method
+        // which might exist on the specific better-sqlite3 implementation
+        const sqliteWithExtensions = sqlite as any;
+        if (typeof sqliteWithExtensions.create_function === 'function') {
+          sqliteWithExtensions.create_function("cosine_similarity", (vec1Str: string, vec2Str: string) => {
+            try {
+              // Parse the JSON strings to arrays
+              const vec1 = JSON.parse(vec1Str);
+              const vec2 = JSON.parse(vec2Str);
+              
+              if (!Array.isArray(vec1) || !Array.isArray(vec2) || vec1.length !== vec2.length) {
+                console.error('Invalid vectors for cosine similarity', { 
+                  vec1Length: Array.isArray(vec1) ? vec1.length : 'not array', 
+                  vec2Length: Array.isArray(vec2) ? vec2.length : 'not array' 
+                });
+                return 0;
+              }
+              
+              // Calculate dot product
+              let dotProduct = 0;
+              let mag1 = 0;
+              let mag2 = 0;
+              
+              for (let i = 0; i < vec1.length; i++) {
+                dotProduct += vec1[i] * vec2[i];
+                mag1 += vec1[i] * vec1[i];
+                mag2 += vec2[i] * vec2[i];
+              }
+              
+              mag1 = Math.sqrt(mag1);
+              mag2 = Math.sqrt(mag2);
+              
+              if (mag1 === 0 || mag2 === 0) return 0;
+              
+              return dotProduct / (mag1 * mag2);
+            } catch (error) {
+              console.error('Error calculating cosine similarity:', error);
               return 0;
             }
-            
-            // Calculate dot product
-            let dotProduct = 0;
-            let mag1 = 0;
-            let mag2 = 0;
-            
-            for (let i = 0; i < vec1.length; i++) {
-              dotProduct += vec1[i] * vec2[i];
-              mag1 += vec1[i] * vec1[i];
-              mag2 += vec2[i] * vec2[i];
-            }
-            
-            mag1 = Math.sqrt(mag1);
-            mag2 = Math.sqrt(mag2);
-            
-            if (mag1 === 0 || mag2 === 0) return 0;
-            
-            return dotProduct / (mag1 * mag2);
-          } catch (error) {
-            console.error('Error calculating cosine similarity:', error);
-            return 0;
-          }
-        });
-      } else {
-        console.warn('SQLite create_function method not available - vector search functionality will be limited');
+          });
+        } else {
+          console.warn('SQLite create_function method not available - vector search functionality will be limited');
+        }
+      } catch (functionError) {
+        console.warn('Error setting up SQLite function:', functionError);
       }
       
       // Initialize the drizzle ORM

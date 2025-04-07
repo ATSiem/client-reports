@@ -5,6 +5,8 @@
 import Database from 'better-sqlite3';
 import { dirname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+// Import the cleanup utility with require since it's a JS file
+const { cleanupTestClients } = require('./utils/test-cleanup');
 
 // Set the database path explicitly
 const DB_PATH = './data/email_agent.db';
@@ -23,11 +25,24 @@ describe('Database Structure', () => {
     sqlite = new Database(DB_PATH);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    // Clean up any test clients that might have been created
+    try {
+      // Create a direct delete statement as a backup in case our utility doesn't work
+      const stmt = sqlite.prepare("DELETE FROM clients WHERE name IN ('Test Client', 'Test Domain Normalization')");
+      stmt.run();
+      console.log('Cleaned up test clients after database structure tests');
+    } catch (error) {
+      console.error('Error cleaning up test clients:', error);
+    }
+    
     // Close the database connection
     if (sqlite) {
       sqlite.close();
     }
+    
+    // Use our utility function as well
+    await cleanupTestClients();
   });
 
   test('database connection works', () => {
@@ -105,11 +120,24 @@ describe('CC and BCC Functionality', () => {
     sqlite = new Database(DB_PATH);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    // Clean up any test clients that might have been created
+    try {
+      // Create a direct delete statement as a backup in case our utility doesn't work
+      const stmt = sqlite.prepare("DELETE FROM clients WHERE name IN ('Test Client', 'Test Domain Normalization')");
+      stmt.run();
+      console.log('Cleaned up test clients after CC/BCC tests');
+    } catch (error) {
+      console.error('Error cleaning up test clients:', error);
+    }
+    
     // Close the database connection
     if (sqlite) {
       sqlite.close();
     }
+    
+    // Use our utility function as well
+    await cleanupTestClients();
   });
 
   test('adds CC and BCC columns if missing', () => {

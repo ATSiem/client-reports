@@ -45,9 +45,25 @@ export const compatDb = {
         .from(schema.reportTemplates)
         .leftJoin(schema.clients, eq(schema.reportTemplates.clientId, schema.clients.id));
         
-        // Handle clientId filter if present
+        // Handle clientId filter if present - fix TypeScript issues by restructuring the query
         if (params && params.where && params.where.clientId) {
-          query = query.where(eq(schema.reportTemplates.clientId, params.where.clientId));
+          // Create the where condition and use it in a new query to avoid TypeScript error
+          const whereCondition = eq(schema.reportTemplates.clientId, params.where.clientId);
+          
+          // Return filtered query
+          return await pgDb.select({
+            id: schema.reportTemplates.id,
+            name: schema.reportTemplates.name,
+            format: schema.reportTemplates.format,
+            client_id: schema.reportTemplates.clientId,
+            client_name: schema.clients.name,
+            example_prompt: schema.reportTemplates.examplePrompt,
+            created_at: schema.reportTemplates.createdAt,
+            updated_at: schema.reportTemplates.updatedAt
+          })
+          .from(schema.reportTemplates)
+          .leftJoin(schema.clients, eq(schema.reportTemplates.clientId, schema.clients.id))
+          .where(whereCondition);
         }
         
         return await query;
