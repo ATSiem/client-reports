@@ -90,9 +90,6 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
     isComplete: boolean;
   } | null>(null);
   
-  // New state to track if we should generate report after email processing
-  const [shouldGenerateAfterProcessing, setShouldGenerateAfterProcessing] = useState(false);
-  
   // Set default date range (current week starting from Monday)
   useEffect(() => {
     const end = new Date();
@@ -254,7 +251,7 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
   }
   
   // Function to start email processing
-  async function handleProcessEmails(generateAfterProcessing = false) {
+  async function handleProcessEmails() {
     if (!selectedClientId || !startDate || !endDate) {
       setError('Please select a client and date range');
       return false;
@@ -262,7 +259,6 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
     
     setError('');
     setIsProcessingEmails(true);
-    setShouldGenerateAfterProcessing(generateAfterProcessing);
     setProcessingStatus({
       progress: 0,
       totalEmails: 0,
@@ -313,7 +309,6 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
       console.error('Error processing emails:', err);
       setError(err.message || 'An error occurred while processing emails');
       setIsProcessingEmails(false);
-      setShouldGenerateAfterProcessing(false);
       return false;
     }
   }
@@ -368,7 +363,6 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
       if (!token) {
         setError('Authentication required. Please sign in again.');
         setIsProcessingEmails(false);
-        setShouldGenerateAfterProcessing(false);
         return;
       }
       
@@ -403,28 +397,22 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
           
           if (data.isFailed) {
             setError(`Email processing failed: ${data.error || 'Unknown error'}`);
-            setShouldGenerateAfterProcessing(false);
           } else if (data.isComplete) {
             // Refresh clients when processing is complete
             await refreshClients();
             
-            if (shouldGenerateAfterProcessing) {
-              // If processing is complete and we should generate the report, do it now
-              setShouldGenerateAfterProcessing(false);
-              handleGenerateReportInternal();
-            }
+            // Always generate the report when processing is complete
+            handleGenerateReportInternal();
           }
         }
       } else {
         setIsProcessingEmails(false);
-        setShouldGenerateAfterProcessing(false);
         setError('Email processing task not found');
       }
     } catch (err) {
       console.error('Error polling status:', err);
       setError(err.message || 'An error occurred while checking processing status');
       setIsProcessingEmails(false);
-      setShouldGenerateAfterProcessing(false);
     }
   }
   
@@ -436,10 +424,8 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
       return;
     }
     
-    if (!selectedTemplateId) {
-      setError('Please select a template');
-      return;
-    }
+    // selectedTemplateId can be null or empty string for Default template
+    // The empty string is valid and indicates the default template
     
     if (!startDate || !endDate) {
       setError('Please select a date range');
@@ -570,10 +556,8 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
       return;
     }
     
-    if (!selectedTemplateId) {
-      setError('Please select a template');
-      return;
-    }
+    // selectedTemplateId can be empty string for Default template
+    // No need to validate it as required since the Default option value is ""
     
     if (!startDate || !endDate) {
       setError('Please select a date range');
@@ -583,28 +567,15 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
     // Store the current client ID to ensure it's preserved throughout the process
     const currentClientId = selectedClientId;
     
-    // Check if we need to process emails first
-    const needsEmailProcessing = !processingStatus?.isComplete;
+    // Start email processing, report will be generated automatically when processing completes
+    const processingStarted = await handleProcessEmails();
+    if (!processingStarted) {
+      setError('Failed to start email processing. Please try again.');
+    }
     
-    if (needsEmailProcessing) {
-      // Start email processing first, then generate report when done
-      const processingStarted = await handleProcessEmails(true);
-      if (!processingStarted) {
-        setError('Failed to start email processing. Please try again.');
-      }
-      
-      // Ensure client selection is preserved
-      if (currentClientId && currentClientId !== selectedClientId) {
-        setSelectedClientId(currentClientId);
-      }
-    } else {
-      // Emails already processed, generate report directly
-      handleGenerateReportInternal();
-      
-      // Ensure client selection is preserved
-      if (currentClientId && currentClientId !== selectedClientId) {
-        setSelectedClientId(currentClientId);
-      }
+    // Ensure client selection is preserved
+    if (currentClientId && currentClientId !== selectedClientId) {
+      setSelectedClientId(currentClientId);
     }
   }
   
@@ -634,7 +605,54 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
         </div>
       )}
       
-      {selectedClientId && (
+      {generatedReport ? (
+        <div className="space-y-6">
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-medium mb-4 dark:text-white">Generated Report</h3>
+            
+            <div className="prose dark:prose-invert max-w-none">
+              <div dangerouslySetInnerHTML={{ __html: generatedReport.replace(/\n/g, '<br>') }} />
+            </div>
+          </div>
+          
+          <div className="flex justify-between">
+            <button
+              onClick={() => setGeneratedReport(null)}
+              className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            >
+              Generate Another Report
+            </button>
+            
+            <button
+              onClick={() => {
+                // Copy to clipboard
+                navigator.clipboard.writeText(generatedReport);
+                setClipboardCopied(true);
+                
+                // Track clipboard copy in feedback data
+                fetch('/api/feedback/action', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    reportId,
+                    action: 'clipboard_copy',
+                    timestamp: new Date().toISOString(),
+                  }),
+                }).catch(error => {
+                  console.error('Error logging clipboard action:', error);
+                });
+                
+                alert('Report copied to clipboard');
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600"
+            >
+              Copy to Clipboard
+            </button>
+          </div>
+        </div>
+      ) : (
         <form onSubmit={handleGenerateReport} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -830,7 +848,7 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
               
               {processingStatus?.isComplete && (
                 <div className="text-sm text-green-600 dark:text-green-400">
-                  Successfully processed {processingStatus.processedEmails} emails. Your report will use these pre-processed emails.
+                  Successfully processed {processingStatus.processedEmails} emails. Generating your report now...
                 </div>
               )}
             </div>
@@ -845,7 +863,7 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
               <span className="relative z-10">
                 {isGenerating ? 'Generating report...' : 
                  isProcessingEmails ? `Processing emails (${processingStatus?.progress || 0}%)...` : 
-                 processingStatus?.isComplete ? 'Generate Report' : 'Process Emails & Generate Report'}
+                 'Process Emails & Generate Report'}
               </span>
               <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 disabled:opacity-0"></div>
               <div className="absolute inset-0 border-0 group-hover:border group-hover:border-white group-hover:border-opacity-30 rounded-md transition-all duration-300"></div>
