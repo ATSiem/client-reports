@@ -5,6 +5,7 @@
 const { db } = require('../../src/lib/db');
 const { cleanupTestClients } = require('./test-cleanup');
 const { setupTestClientCleanup } = require('./test-setup');
+const { v4: uuidv4 } = require('uuid');
 
 /**
  * Ensure the clients table exists in the database
@@ -52,13 +53,13 @@ function createTestClients(options = {}) {
   // The test client configurations
   const testClients = [
     {
-      id: 'test-client-id-1',
+      id: uuidv4(), // Use unique ID for each test run
       name: 'Test Client',
       domains: JSON.stringify(['test.com']),
       emails: JSON.stringify(['test@test.com'])
     },
     {
-      id: 'test-client-id-2',
+      id: uuidv4(), // Use unique ID for each test run
       name: 'Test Domain Normalization',
       domains: JSON.stringify(['normalization.com']),
       emails: JSON.stringify(['test@normalization.com'])

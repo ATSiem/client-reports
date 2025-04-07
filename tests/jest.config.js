@@ -19,6 +19,9 @@ module.exports = {
   // Setup files
   setupFilesAfterEnv: ['<rootDir>/setup.js'],
   
+  // Setup files before tests
+  setupFiles: ['<rootDir>/test-env.js'],
+  
   // Ignore node_modules
   transformIgnorePatterns: [
     '/node_modules/',

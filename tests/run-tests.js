@@ -79,20 +79,70 @@ testFiles.forEach(file => {
 });
 console.log('');
 
-// Check server status before running tests
+// Function to start the server
+async function startServer() {
+  console.log(`${colors.yellow}Starting local server...${colors.reset}`);
+  
+  const serverProcess = spawn('npm', ['run', 'dev'], {
+    stdio: 'pipe', // Capture output to avoid cluttering the test output
+    detached: true, // Run in background
+    shell: true
+  });
+  
+  // Collect server output to know when it's ready
+  let serverOutput = '';
+  serverProcess.stdout.on('data', (data) => {
+    serverOutput += data.toString();
+  });
+  
+  // Wait for server to start (maximum 30 seconds)
+  let serverStarted = false;
+  const startTime = Date.now();
+  
+  while (!serverStarted && (Date.now() - startTime < 30000)) {
+    // Check if server is running every second
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    serverStarted = await checkServerRunning();
+    
+    // Also check server output for ready message
+    if (serverOutput.includes('ready') || serverOutput.includes('started')) {
+      serverStarted = true;
+    }
+  }
+  
+  if (serverStarted) {
+    console.log(`${colors.green}✓ Local server started at ${SERVER_URL}${colors.reset}\n`);
+    return { process: serverProcess, started: true };
+  } else {
+    console.error(`${colors.red}Failed to start local server${colors.reset}\n`);
+    try {
+      // Kill the server process if it didn't start correctly
+      process.kill(-serverProcess.pid);
+    } catch (e) {
+      // Ignore errors when killing the process
+    }
+    return { process: null, started: false };
+  }
+}
+
+// Check server status and run tests
 (async () => {
-  const serverRunning = await checkServerRunning();
+  let serverRunning = await checkServerRunning();
+  let serverProcess = null;
+  let startedServerForTests = false;
   
   if (!serverRunning) {
-    console.warn(`${colors.yellow}${colors.bright}⚠️ WARNING: Local server is not running at ${SERVER_URL}${colors.reset}`);
-    console.warn(`${colors.yellow}Some tests require a running server and will be skipped.${colors.reset}`);
-    console.warn(`${colors.yellow}To run all tests with full coverage, start the server with:${colors.reset}`);
-    console.warn(`${colors.bright}  npm run dev${colors.reset}\n`);
+    console.log(`${colors.yellow}${colors.bright}⚠️ Server not running at ${SERVER_URL}${colors.reset}`);
+    console.log(`${colors.yellow}Automatically starting server for tests...${colors.reset}`);
     
-    // Ask for confirmation to continue
-    if (process.stdout.isTTY) {
-      console.warn(`${colors.yellow}Press Enter to continue with partial test coverage, or Ctrl+C to cancel${colors.reset}`);
-      await new Promise(resolve => process.stdin.once('data', resolve));
+    // Auto-start the server
+    const result = await startServer();
+    serverProcess = result.process;
+    serverRunning = result.started;
+    startedServerForTests = result.started;
+    
+    if (!serverRunning) {
+      console.error(`${colors.red}Failed to start the server. Continuing with partial test coverage.${colors.reset}\n`);
     }
   } else {
     console.log(`${colors.green}✓ Local server is running at ${SERVER_URL}${colors.reset}\n`);
@@ -123,6 +173,17 @@ console.log('');
       }
     } else {
       console.error(`\n${colors.red}${colors.bright}Tests failed with errors.${colors.reset}`);
+    }
+    
+    // If we started the server, shut it down
+    if (startedServerForTests && serverProcess) {
+      console.log(`${colors.yellow}Shutting down test server...${colors.reset}`);
+      try {
+        // Kill the entire process group
+        process.kill(-serverProcess.pid);
+      } catch (e) {
+        // Ignore errors when killing the server
+      }
     }
     
     process.exit(code);
