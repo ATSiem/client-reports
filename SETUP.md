@@ -1,6 +1,6 @@
-# Setting Up the Email Agent with Microsoft OAuth Integration
+# Setting Up the Client Reports App with Microsoft OAuth Integration
 
-This guide helps you set up the Email Agent with secure Microsoft OAuth authentication, enabling users to access their own emails without administrator access to all email accounts.
+This guide helps you set up the Client Reports application with secure Microsoft OAuth authentication, enabling users to access their own emails without administrator access to all email accounts.
 
 ## Prerequisites
 
@@ -12,8 +12,8 @@ This guide helps you set up the Email Agent with secure Microsoft OAuth authenti
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/email-agent-workshop.git
-   cd email-agent-workshop
+   git clone https://github.com/ATSiem/client-reports
+   cd client-reports
    ```
 
 2. Install dependencies:
@@ -29,26 +29,41 @@ This guide helps you set up the Email Agent with secure Microsoft OAuth authenti
    # OpenAI
    OPENAI_API_KEY=your_openai_api_key
 
+   # OpenAI Model Selection
+   OPENAI_SUMMARY_MODEL=gpt-3.5-turbo
+   OPENAI_REPORT_MODEL=gpt-4o-2024-08-06
+   OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
    # Microsoft Graph API (OAuth)
-   CLIENT_ID=your_client_id
-   TENANT_ID=your_tenant_id
-   REDIRECT_URI=http://localhost:3000/api/auth/callback
+   NEXT_PUBLIC_AZURE_CLIENT_ID=your_client_id
+   NEXT_PUBLIC_AZURE_TENANT_ID=your_tenant_id
+   NEXT_PUBLIC_AZURE_REDIRECT_URI=http://localhost:3000/api/auth/callback
+   
+   # Domain restriction (optional)
+   # ALLOWED_EMAIL_DOMAINS=example.com,company.org
    
    # Webhook
    WEBHOOK_SECRET=some-random-string
+
+   # Email Processing Limits and Batch Sizes
+   EMAIL_FETCH_LIMIT=1000
+   EMAIL_PROCESSING_BATCH_SIZE=200
+   EMAIL_EMBEDDING_BATCH_SIZE=200
+   EMBEDDING_BATCH_SIZE=20
+   DATABASE_TYPE=sqlite
    ```
 
 ## Step 2: Register an App in Azure AD for OAuth
 
 1. Go to the [Azure Portal](https://portal.azure.com/)
 2. Navigate to Azure Active Directory > App registrations > New registration
-3. Enter a name for your application (e.g., "Email Agent")
+3. Enter a name for your application (e.g., "Client Reports")
 4. Under "Supported account types", select "Accounts in this organizational directory only"
 5. Under "Redirect URI", select "Web" and enter: `http://localhost:3000/api/auth/callback`
 6. Click "Register"
 7. On the app overview page, note these values:
-   - Application (client) ID - copy to CLIENT_ID in .env
-   - Directory (tenant) ID - copy to TENANT_ID in .env
+   - Application (client) ID - copy to NEXT_PUBLIC_AZURE_CLIENT_ID in .env
+   - Directory (tenant) ID - copy to NEXT_PUBLIC_AZURE_TENANT_ID in .env
 
 ## Step 3: Configure API Permissions for Delegated Access
 
@@ -73,7 +88,14 @@ This guide helps you set up the Email Agent with secure Microsoft OAuth authenti
 3. Under "Advanced settings", set "Allow public client flows" to Yes
 4. Click "Save"
 
-## Step 5: Run the Application
+## Step 5: Initialize the Database
+
+1. Run the database migration:
+   ```bash
+   npm run db:migrate
+   ```
+
+## Step 6: Run the Application
 
 1. Start the development server:
    ```bash
@@ -84,17 +106,19 @@ This guide helps you set up the Email Agent with secure Microsoft OAuth authenti
 
 3. Click "Sign in with Microsoft" to authenticate with your Microsoft 365 account
 
-4. After signing in, click the sync button to fetch emails from your mailbox
+4. After signing in, you can create clients and generate reports from your emails
 
 ## Usage
 
 - Each user signs in with their own Microsoft 365 account
 - Users can only access their own emails (enforced by Microsoft's OAuth)
-- Emails are processed with OpenAI and stored only in the local SQLite database
-- The app never has access to emails beyond what the logged-in user can access
+- Emails are processed with OpenAI and stored in the local SQLite database
+- Create client profiles to organize and filter your communications
+- Generate comprehensive client reports using customizable templates
 
 ## Troubleshooting
 
 - If you can't sign in, verify your Azure app registration settings
 - If permission errors occur, check that you've added the correct delegated permissions
 - For database issues, check that the SQLite database path is correctly set and writable
+- For webhook testing, use `npm run dev:webhook` with [smee.io](https://smee.io)
