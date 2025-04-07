@@ -107,7 +107,7 @@ export function ClientPage() {
           <h1 className="text-2xl font-bold">
             <span className="mr-2" role="img" aria-label="document">📊</span>
             Client Reports
-            <div className="text-[8px] opacity-30 font-normal pl-1">{VERSION_TOKEN}</div>
+            <div className="text-[9px] opacity-50 font-normal pl-1 tracking-tight">{VERSION_TOKEN}</div>
           </h1>
         </div>
         <div className="flex items-center gap-4">

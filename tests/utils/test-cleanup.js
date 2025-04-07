@@ -51,19 +51,32 @@ async function cleanupTestClients(testClientNames = ['Test Client', 'Test Domain
       };
     }
     
-    // Prepare a parameterized query
-    const placeholders = testClientNames.map(() => '?').join(', ');
-    const query = `DELETE FROM clients WHERE name IN (${placeholders})`;
+    // For SQLite compatibility, we'll execute separate delete statements
+    // rather than using IN with multiple parameters, which can be problematic
+    let totalDeleted = 0;
     
-    // Execute the query
-    const stmt = db.connection.prepare(query);
-    const result = stmt.run(...testClientNames);
+    for (const clientName of testClientNames) {
+      try {
+        const stmt = db.connection.prepare('DELETE FROM clients WHERE name = ?');
+        const result = stmt.run(clientName);
+        totalDeleted += result.changes || 0;
+      } catch (deleteError) {
+        console.error(`Error deleting client ${clientName}:`, deleteError);
+      }
+    }
     
-    console.log(`Deleted ${result.changes} test client(s)`);
+    // Force a commit to ensure changes are persisted
+    try {
+      db.connection.prepare('COMMIT').run();
+    } catch (commitError) {
+      // Ignore if not in transaction
+    }
+    
+    console.log(`Deleted ${totalDeleted} test client(s)`);
     
     return {
       success: true,
-      deleted: result.changes || 0
+      deleted: totalDeleted
     };
   } catch (error) {
     console.error('Error cleaning up test clients:', error);

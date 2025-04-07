@@ -117,11 +117,26 @@ describe('Test Client Cleanup', () => {
   });
   
   test('should handle empty database', async () => {
+    // First, make sure we completely clean up any test clients
     // Clean all clients first
     const cleanupStmt = db.connection.prepare(`
       DELETE FROM clients WHERE name IN ('Test Client', 'Test Domain Normalization')
     `);
     cleanupStmt.run();
+    
+    // Force a commit to ensure changes are persisted
+    try {
+      db.connection.prepare('COMMIT').run();
+    } catch (commitError) {
+      // Ignore if not in transaction
+    }
+    
+    // Verify the clients are gone
+    const verifyStmt = db.connection.prepare(`
+      SELECT COUNT(*) as count FROM clients WHERE name IN ('Test Client', 'Test Domain Normalization')
+    `);
+    const verifyResult = verifyStmt.get();
+    console.log(`Verified ${verifyResult.count} test clients exist before empty database test`);
     
     // Run cleanup on empty database
     const result = await cleanupTestClients();
