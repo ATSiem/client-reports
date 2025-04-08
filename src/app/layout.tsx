@@ -26,12 +26,8 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Run database migrations on server only
-  if (typeof window === 'undefined') {
-    import('~/lib/db/migration-manager').then(({ runMigrations }) => {
-      runMigrations();
-    });
-  }
+  // Migrations should not be run on every page render
+  // Database initialization in db/index.ts already handles migrations
   
   return (
     <html lang="en" suppressHydrationWarning>
