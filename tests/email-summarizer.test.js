@@ -81,7 +81,7 @@ describe('Email Summarization', () => {
       // Still throw the error to fail the test
       throw error;
     }
-  }, 20000); // Increase timeout for API call
+  }, 45000); // Increase timeout to 45 seconds for API call
   
   test('Model detection logic should correctly identify model capabilities', () => {
     const testModels = [
