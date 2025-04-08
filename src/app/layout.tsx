@@ -4,6 +4,7 @@ import "../styles/global.css";
 import { AuthProvider } from "~/components/auth-provider";
 import { BackgroundProcessorInit } from "~/components/background-processor-init";
 import { ThemeProvider } from "~/components/theme-provider";
+import { PHProvider } from "~/lib/posthog";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
@@ -35,12 +36,14 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <AuthProvider>
-          <ThemeProvider>
-            <BackgroundProcessorInit />
-            {children}
-          </ThemeProvider>
-        </AuthProvider>
+        <PHProvider>
+          <AuthProvider>
+            <ThemeProvider>
+              <BackgroundProcessorInit />
+              {children}
+            </ThemeProvider>
+          </AuthProvider>
+        </PHProvider>
       </body>
     </html>
   );

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getUserAccessToken } from '~/lib/auth/microsoft';
 import { ReportFeedback } from '~/components/report-feedback';
+import { usePostHog } from 'posthog-js/react';
 
 interface Client {
   id: string;
@@ -25,6 +26,7 @@ interface ReportGeneratorProps {
 }
 
 export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGeneratorProps) {
+  const posthog = usePostHog();
   const [clients, setClients] = useState<Client[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClientId || null);
@@ -442,6 +444,16 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
     const startTime = Date.now();
     
     try {
+      // Track report generation start
+      posthog.capture('report_generation_started', {
+        client_id: selectedClientId,
+        template_id: selectedTemplateId,
+        start_date: startDate,
+        end_date: endDate,
+        use_vector_search: useVectorSearch,
+        has_search_query: !!searchQuery
+      });
+
       const token = getUserAccessToken();
       
       if (!token) {
@@ -534,11 +546,29 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
         setShowFeedback(true);
       }, 10000);
       
+      // Track successful report generation
+      posthog.capture('report_generated', {
+        client_id: selectedClientId,
+        template_id: selectedTemplateId,
+        generation_time_ms: totalTime,
+        email_count: data.emailCount || 0,
+        from_graph_api: data.fromGraphApi || false,
+        success: true
+      });
+      
       // Notify parent component if callback provided
       if (onReportGenerated) {
         onReportGenerated();
       }
     } catch (err) {
+      // Track failed report generation
+      posthog.capture('report_generated', {
+        client_id: selectedClientId,
+        template_id: selectedTemplateId,
+        success: false,
+        error: err.message || 'Unknown error'
+      });
+      
       console.error('Error generating report:', err);
       setError(err.message || 'An error occurred while generating the report');
     } finally {
