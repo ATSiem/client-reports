@@ -25,15 +25,136 @@ This application helps you generate professional client communication reports by
 
 ## Getting Started
 
-1. Clone this repository
+### Prerequisites
+
+- Microsoft 365 account
+- Azure account with permissions to register apps
+- OpenAI API key
+- Node.js 20+
+
+### Local Development Setup
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/ATSiem/client-reports
+   cd client-reports
+   ```
+
 2. Create a `.env` file based on `.env.example` with your:
    - `OPENAI_API_KEY` - Get from [OpenAI Platform](https://platform.openai.com)
    - `WEBHOOK_SECRET` - Random string for webhook security
-   - Microsoft Graph API credentials for authentication
-3. Install dependencies: `npm install`
-4. Start the development server: `npm run dev`
-5. Initialize the database: `npm run db:migrate`
+   - Microsoft Graph API credentials for authentication (see below)
+
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+4. Initialize the database:
+   ```bash
+   npm run db:migrate
+   ```
+
+5. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
 6. For webhook testing, use `npm run dev:webhook` with [smee.io](https://smee.io)
+
+### Setting Up Microsoft OAuth
+
+1. Go to the [Azure Portal](https://portal.azure.com/)
+2. Navigate to Azure Active Directory > App registrations > New registration
+3. Enter a name for your application (e.g., "Client Reports")
+4. Under "Supported account types", select "Accounts in this organizational directory only"
+5. Under "Redirect URI", select "Web" and enter: `http://localhost:3000/api/auth/callback`
+   - For production, use your domain (e.g., `https://comms.solutioncenter.ai/api/auth/callback`)
+6. Click "Register"
+7. On the app overview page, note these values:
+   - Application (client) ID - copy to NEXT_PUBLIC_AZURE_CLIENT_ID in .env
+   - Directory (tenant) ID - copy to NEXT_PUBLIC_AZURE_TENANT_ID in .env
+
+#### Configure API Permissions for Delegated Access
+
+1. In your app registration, go to "API permissions"
+2. Click "Add a permission"
+3. Select "Microsoft Graph" > "Delegated permissions"
+4. Add the following permissions:
+   - Mail.Read (under Mail category)
+   - Mail.ReadBasic (under Mail category)
+   - User.Read (under User category)
+5. Click "Add permissions"
+6. For testing, you can click "Grant admin consent for [your organization]"
+   - This pre-approves the permissions for all users in your organization
+   - Without this, each user will need to consent when they first sign in
+
+#### Authentication Settings
+
+1. In your app registration, go to "Authentication"
+2. Under "Implicit grant and hybrid flows", enable:
+   - Access tokens
+   - ID tokens
+3. Under "Advanced settings", set "Allow public client flows" to Yes
+4. Click "Save"
+
+## Docker Deployment
+
+The application can be deployed using Docker for easy setup and management.
+
+### Prerequisites for Docker Deployment
+- Docker and Docker Compose installed
+- Git access to the repository
+
+### Building and Running with Docker
+
+1. Clone the repository (or pull the latest changes):
+   ```bash
+   git clone https://github.com/ATSiem/client-reports.git
+   cd client-reports
+   ```
+
+2. Create or copy your `.env` file with the required environment variables
+   - Update the `NEXT_PUBLIC_AZURE_REDIRECT_URI` to use your production domain if deployed publicly
+
+3. Run the application using Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+
+4. Access the application at http://localhost:3000
+
+### Automated Deployment
+
+The repository includes a deployment script (`deploy.sh`) that simplifies updating the application:
+
+1. Make the script executable:
+   ```bash
+   chmod +x deploy.sh
+   ```
+
+2. Run the script to pull the latest changes and rebuild:
+   ```bash
+   ./deploy.sh
+   ```
+
+### Exposing with Caddy
+
+To expose the application with a public URL using Caddy:
+
+1. Add the following section to your Caddyfile:
+   ```
+   comms.solutioncenter.ai {
+     reverse_proxy localhost:3000
+   }
+   ```
+
+2. Reload Caddy to apply changes:
+   ```bash
+   brew services restart caddy
+   # Or on Linux
+   sudo systemctl reload caddy
+   ```
 
 ## Technology Stack
 
@@ -43,6 +164,7 @@ This application helps you generate professional client communication reports by
 - **AI**: OpenAI GPT-4o via Vercel AI SDK
 - **Authentication**: Microsoft OAuth via MSAL
 - **Email Integration**: Microsoft Graph API
+- **Deployment**: Docker, Docker Compose, Caddy
 
 ## How It Works
 
@@ -157,8 +279,13 @@ The reporting system supports unlimited custom placeholders. Some examples:
 
 You can add any placeholder that makes sense for your reporting needs, and the AI will generate appropriate content by analyzing your email communications.
 
-## License
-MIT
+## Troubleshooting
+
+- If you can't sign in, verify your Azure app registration settings
+- If permission errors occur, check that you've added the correct delegated permissions
+- For database issues, check that the SQLite database path is correctly set and writable
+- For webhook testing, use `npm run dev:webhook` with [smee.io](https://smee.io)
+- If Docker container fails to start, check logs with `docker-compose logs`
 
 ## Security Measures
 
@@ -202,3 +329,6 @@ The application uses environment variables to manage secrets and configuration. 
 - The directory is excluded from git via `.gitignore`
 - Backups of production data should be properly secured
 - Never commit database files to version control
+
+## License
+MIT
