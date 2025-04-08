@@ -1,18 +1,28 @@
 // Test for the summarize API schema validation
 const { z } = require('zod');
-const { generateObject } = require('ai');
+
+// Create a mock implementation of the AI SDK generateObject function
+const mockGenerateObject = jest.fn().mockResolvedValue({
+  object: {
+    report: 'Test report content',
+    highlights: []
+  }
+});
 
 // Mock the AI SDK
 jest.mock('ai', () => ({
-  generateObject: jest.fn().mockResolvedValue({
-    object: {
-      report: 'Test report content',
-      highlights: []
-    }
-  })
+  generateObject: mockGenerateObject
 }));
 
+// Import the mocked function after mocking
+const { generateObject } = require('ai');
+
 describe('Summarize API Schema', () => {
+  beforeEach(() => {
+    // Clear mock data before each test
+    jest.clearAllMocks();
+  });
+
   test('Schema should not use default values for highlights', () => {
     // This test verifies that we're not using default values in the schema
     // which would cause the OpenAI API to reject the request
@@ -43,33 +53,34 @@ describe('Summarize API Schema', () => {
   });
   
   test('generateObject should be called with the correct schema', async () => {
-    // Create a mock implementation of the API route logic
-    const mockGenerateReport = async () => {
-      const result = await generateObject({
-        model: {},
-        schemaName: "communicationReport",
-        schemaDescription: "A formatted report of email communications",
-        schema: z.object({ 
-          report: z.string(),
-          highlights: z.array(z.string()) // No default value
-        }),
-        prompt: "Test prompt",
-      });
-      
-      return result;
+    // Define test data
+    const mockModel = {
+      objectGenerationMode: 'json',
+      structuredOutputs: true
     };
     
-    // Call the mock function
-    await mockGenerateReport();
+    const testSchema = z.object({ 
+      report: z.string(),
+      highlights: z.array(z.string()) // No default value
+    });
+    
+    // Call generateObject with our test data
+    await generateObject({
+      model: mockModel,
+      schemaName: "communicationReport",
+      schemaDescription: "A formatted report of email communications",
+      schema: testSchema,
+      prompt: "Test prompt",
+    });
     
     // Verify that generateObject was called with the correct schema
-    expect(generateObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        schemaName: "communicationReport",
-        schema: expect.any(Object),
-        prompt: "Test prompt"
-      })
-    );
+    expect(generateObject).toHaveBeenCalledWith({
+      model: mockModel,
+      schemaName: "communicationReport",
+      schemaDescription: "A formatted report of email communications",
+      schema: testSchema,
+      prompt: "Test prompt",
+    });
     
     // Verify that the schema doesn't have a default value for highlights
     const schemaArg = generateObject.mock.calls[0][0].schema;

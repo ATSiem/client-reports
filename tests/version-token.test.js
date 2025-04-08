@@ -1,9 +1,15 @@
+// Mock window to be undefined (Node.js environment)
+global.window = undefined;
+
+// Mock child_process module first
+jest.mock('child_process', () => {
+  const mockExecSync = jest.fn();
+  return { execSync: mockExecSync };
+});
+
+// Then require the modules
 const { execSync } = require('child_process');
 const { generateVersionToken } = require('../src/lib/utils');
-
-jest.mock('child_process', () => ({
-  execSync: jest.fn(),
-}));
 
 describe('generateVersionToken', () => {
   const originalDate = global.Date;
@@ -18,8 +24,8 @@ describe('generateVersionToken', () => {
       }
     };
     
-    // Reset the mock implementation of execSync
-    execSync.mockReset();
+    // Reset all mocks between tests
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
@@ -28,7 +34,7 @@ describe('generateVersionToken', () => {
   });
 
   test('returns formatted version with commit hash and EST date/time', () => {
-    // Mock execSync to return a fixed commit hash
+    // Configure execSync to return a fixed commit hash
     execSync.mockReturnValue(Buffer.from('abcdef1'));
     
     // Call function
@@ -43,7 +49,7 @@ describe('generateVersionToken', () => {
   });
 
   test('returns fallback when git command fails', () => {
-    // Mock execSync to throw an error
+    // Configure execSync to throw an error
     execSync.mockImplementation(() => {
       throw new Error('git command failed');
     });

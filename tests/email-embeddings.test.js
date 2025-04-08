@@ -1,7 +1,8 @@
 const fetch = require('node-fetch');
 
-// Mock the fetch function
-jest.mock('node-fetch');
+// Create a mock function first, then mock the module with proper implementation
+const fetchMock = jest.fn();
+jest.mock('node-fetch', () => fetchMock);
 
 // Mock the modules before importing
 jest.mock('../src/lib/db', () => ({
@@ -28,7 +29,7 @@ jest.mock('../src/lib/env', () => ({
 }));
 
 // Create a mock implementation of the functions we want to test
-const mockFindSimilarEmails = async (query, options) => {
+const mockFindSimilarEmails = jest.fn().mockImplementation(async (query, options) => {
   // Simulate the behavior of findSimilarEmails
   return [
     {
@@ -41,17 +42,17 @@ const mockFindSimilarEmails = async (query, options) => {
       similarity_score: 0.95
     }
   ];
-};
+});
 
-const mockProcessEmailEmbeddings = async (limit) => {
+const mockProcessEmailEmbeddings = jest.fn().mockImplementation(async (limit) => {
   // Simulate the behavior of processEmailEmbeddings
   return { success: true, processed: 1 };
-};
+});
 
 // Mock the entire module
 jest.mock('../src/lib/client-reports/email-embeddings', () => ({
-  findSimilarEmails: jest.fn(mockFindSimilarEmails),
-  processEmailEmbeddings: jest.fn(mockProcessEmailEmbeddings)
+  findSimilarEmails: mockFindSimilarEmails,
+  processEmailEmbeddings: mockProcessEmailEmbeddings
 }));
 
 // Now import the mocked functions
@@ -63,7 +64,7 @@ describe('Email Embeddings', () => {
     jest.clearAllMocks();
     
     // Mock the fetch response for embeddings
-    fetch.mockResolvedValue({
+    fetchMock.mockImplementation(() => Promise.resolve({
       ok: true,
       json: async () => ({
         data: [
@@ -72,7 +73,7 @@ describe('Email Embeddings', () => {
           }
         ]
       })
-    });
+    }));
   });
   
   test('findSimilarEmails should correctly search for similar emails', async () => {
