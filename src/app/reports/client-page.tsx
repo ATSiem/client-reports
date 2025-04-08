@@ -10,6 +10,7 @@ import { TemplateList } from './components/template-list';
 import Link from 'next/link';
 import { ThemeToggle } from '~/components/theme-provider';
 import { getUserAccessToken } from '~/lib/auth/microsoft';
+import { isAdminUser } from '~/lib/auth/admin';
 
 // Use the environment variable set at build time
 const VERSION_TOKEN = process.env.VERSION_TOKEN || 'dev-build-local';
@@ -100,6 +101,15 @@ export function ClientPage() {
     }
   }, [activeView, isAuthenticated, selectedClientId, refreshClientList, fetchClients]);
 
+  // Log user information for debugging
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log('Current user:', user);
+      console.log('Username for admin check:', user.username);
+      console.log('Is admin user?', isAdminUser(user.username));
+    }
+  }, [isAuthenticated, user]);
+
   return (
     <div className="mx-auto mt-10 max-w-screen-lg">
       <div className="mb-6 flex justify-between items-center">
@@ -116,6 +126,14 @@ export function ClientPage() {
           
           {isAuthenticated && (
             <div className="flex items-center gap-2">
+              {isAdminUser(user?.username) && (
+                <Link
+                  href="/admin/feedback"
+                  className="px-3 py-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-200 transition-colors"
+                >
+                  Feedback Analytics
+                </Link>
+              )}
               <Link
                 href="/settings"
                 className="px-3 py-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-200 transition-colors"
