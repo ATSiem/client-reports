@@ -550,7 +550,7 @@ export async function POST(request: Request) {
         const templateId = crypto.randomUUID();
         saveStmt.run(
           templateId, 
-          data.saveName, 
+          data.saveName.trim(), // Ensure name is trimmed
           format, // Use the potentially modified format 
           data.clientId, 
           data.examplePrompt || null

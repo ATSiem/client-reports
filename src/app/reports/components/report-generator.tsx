@@ -466,7 +466,7 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
         startDate,
         endDate,
         format,
-        saveName: saveName || `${client.name} Report - ${startDate} to ${endDate}`,
+        saveName: saveName,
         examplePrompt,
         useVectorSearch,
         searchQuery,
