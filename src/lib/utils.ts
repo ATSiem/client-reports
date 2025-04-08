@@ -24,6 +24,27 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function generateVersionToken(): string {
   try {
+    // Check for Docker/standalone environment variables
+    if (process.env.NEXT_PUBLIC_GIT_COMMIT_SHA === 'standalone') {
+      const now = new Date();
+      const estOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      };
+      
+      const estFormatter = new Intl.DateTimeFormat('en-US', estOptions);
+      const formattedDate = estFormatter.format(now)
+        .replace(',', '')
+        .replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2');
+      
+      return `docker build ${formattedDate}`;
+    }
+
     // Only attempt git operations if execSync is available
     if (execSync) {
       // Get the git commit hash (short version)

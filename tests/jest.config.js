@@ -1,8 +1,11 @@
 module.exports = {
-  // Transform TypeScript files
+  // Transform TypeScript files using ts-jest only
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
-    '^.+\\.(js|jsx)$': 'babel-jest',
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      tsconfig: '<rootDir>/../tsconfig.json',
+      isolatedModules: true,
+      diagnostics: { ignoreCodes: [151001] }
+    }],
   },
   
   // Specify test environment
@@ -22,9 +25,9 @@ module.exports = {
   // Setup files before tests
   setupFiles: ['<rootDir>/test-env.js'],
   
-  // Ignore node_modules
+  // Only ignore regular node_modules, allow processing of ts-jest
   transformIgnorePatterns: [
-    '/node_modules/',
+    '/node_modules/(?!ts-jest)',
   ],
   
   // Coverage settings

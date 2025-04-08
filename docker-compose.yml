@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   client-reports:
     build:
@@ -11,6 +9,10 @@ services:
       - "3000:3000"
     volumes:
       - ./data:/app/data
-      - ./.env:/app/.env
+    env_file:
+      - ./.env
     environment:
-      - NODE_ENV=production 
+      - NODE_ENV=production
+      - DATABASE_TYPE=sqlite
+      - NEXT_PUBLIC_GIT_COMMIT_SHA=standalone
+      - NEXT_PUBLIC_GIT_BRANCH=standalone 

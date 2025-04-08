@@ -2,8 +2,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies required for better-sqlite3, Git for build process, and bash
-RUN apk add --no-cache python3 make g++ git bash
+# Install dependencies required for better-sqlite3, bash, and git
+RUN apk add --no-cache python3 make g++ bash git
 
 # Copy package files
 COPY package.json package-lock.json ./
@@ -13,31 +13,26 @@ RUN npm ci
 
 # Set up environment
 ENV NODE_ENV=production
-# Fix for child_process module in Next.js
+ENV DATABASE_TYPE=sqlite
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV SQLITE_DB_PATH=/app/data/email_agent.db
 
-# Setup a dummy git repository to prevent git errors during build
-RUN git init && \
-    git config --global user.email "docker@example.com" && \
-    git config --global user.name "Docker Build" && \
-    git add . && \
-    git commit -m "Initial commit"
+# Create data directory for SQLite database with proper permissions
+RUN mkdir -p /app/data && \
+    chmod -R 755 /app/data
 
 # Copy application code
 COPY . .
 
-# Make the version check script executable and modify it to work in Docker
-RUN chmod +x ensure-node-version.sh && \
-    sed -i 's|#!/bin/bash|#!/bin/bash\n# Skip node version check in Docker container\nexit 0|' ensure-node-version.sh
+# Set Git env variables to prevent errors when building without a git repository
+ENV NEXT_PUBLIC_GIT_COMMIT_SHA=standalone
+ENV NEXT_PUBLIC_GIT_BRANCH=standalone
 
 # Build application
 RUN npm run build
-
-# Create data directory for SQLite database
-RUN mkdir -p /app/data
 
 # Expose the port Next.js uses by default
 EXPOSE 3000
 
 # Start the application
-CMD ["npm", "run", "start"] 
+CMD ["npm", "start"] 
