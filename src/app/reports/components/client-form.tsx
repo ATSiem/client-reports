@@ -37,7 +37,22 @@ export function ClientForm({ onClientAdded }: ClientFormProps) {
       
       // Parse domains and emails from comma-separated lists
       const domainList = domains.split(',')
-        .map(d => d.trim().toLowerCase())
+        .map(d => {
+          // Normalize domain formats:
+          let domain = d.trim().toLowerCase();
+          
+          // Handle format: @domain.com
+          if (domain.startsWith('@')) {
+            domain = domain.substring(1);
+          }
+          
+          // Handle format: domain (without .com or .org, etc)
+          if (domain.length > 0 && !domain.includes('.')) {
+            domain = `${domain}.com`;
+          }
+          
+          return domain;
+        })
         .filter(d => d.length > 0);
         
       const emailList = emails.split(',')
