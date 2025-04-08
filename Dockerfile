@@ -19,6 +19,7 @@ ENV SQLITE_DB_PATH=/app/data/email_agent.db
 
 # Create data directory for SQLite database with proper permissions
 RUN mkdir -p /app/data && \
+    chown -R node:node /app/data && \
     chmod -R 755 /app/data
 
 # Copy application code
@@ -30,6 +31,9 @@ ENV NEXT_PUBLIC_GIT_BRANCH=standalone
 
 # Build application
 RUN npm run build
+
+# Switch to non-root user
+USER node
 
 # Expose the port Next.js uses by default
 EXPOSE 3000

@@ -10,17 +10,17 @@ export * from "drizzle-orm";
 // For server-side database connection
 let db: any;
 
-// Check if we should use Postgres (in production) or SQLite (in development)
-const usePostgres = process.env.NODE_ENV === 'production' || process.env.DATABASE_TYPE === 'postgres';
+// Only use Postgres when explicitly configured
+const usePostgres = process.env.DATABASE_TYPE === 'postgres';
 
 // This initialization will only run on the server
 if (typeof window === 'undefined') {
   try {
     if (usePostgres) {
-      console.log('Using Postgres database in production');
+      console.log('Using Postgres database');
       db = postgresDb;
     } else {
-      console.log('Using SQLite database in development');
+      console.log('Using SQLite database');
       
       // Ensure directory exists with better error handling
       const dbDir = dirname(env.SQLITE_DB_PATH);
