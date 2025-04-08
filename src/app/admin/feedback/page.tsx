@@ -42,7 +42,13 @@ export default function FeedbackAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { darkMode } = useTheme();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  
+  // List of admin email addresses (all lowercase for comparison)
+  const ADMIN_EMAILS = [
+    'asiemiginowski@defactoglobal.com',
+    'bsheridan@defactoglobal.com'
+  ].map(email => email.toLowerCase());
   
   // Function to download CSV with authentication
   const downloadCSV = async () => {
@@ -79,17 +85,40 @@ export default function FeedbackAnalyticsPage() {
       try {
         // Get the auth token using getUserAccessToken
         const token = getUserAccessToken();
+        console.log('Feedback page - Auth token available:', !!token);
+        
+        // Get user email from session storage
+        const userEmail = typeof window !== 'undefined' ? sessionStorage.getItem('userEmail') : null;
+        console.log('Feedback page - User email from storage:', userEmail);
+        
+        if (!userEmail) {
+          console.error('Feedback page - No user email found in storage');
+          setError('User email information is missing');
+          setLoading(false);
+          return;
+        }
+        
+        // Check if user is an admin
+        if (!ADMIN_EMAILS.includes(userEmail.toLowerCase())) {
+          console.log('Feedback page - User is not an admin:', userEmail);
+          setError('Access denied. Only administrators can view feedback data.');
+          setLoading(false);
+          return;
+        }
         
         const response = await fetch('/api/admin/feedback', {
           headers: {
             'Authorization': token ? `Bearer ${token}` : '',
             'Content-Type': 'application/json',
+            'X-User-Email': userEmail
           },
         });
         
+        console.log('Feedback page - Response status:', response.status);
+        
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          console.error('Server error:', response.status, errorData);
+          console.error('Feedback page - Server error:', response.status, errorData);
           throw new Error(errorData.message || 'Failed to fetch feedback data');
         }
         
@@ -98,7 +127,7 @@ export default function FeedbackAnalyticsPage() {
         setFeedback(data.feedback || []);
         setStats(data.stats || null);
       } catch (err) {
-        console.error('Error fetching feedback:', err);
+        console.error('Feedback page - Error fetching feedback:', err);
         setError(err instanceof Error ? err.message : 'Failed to load feedback data');
       } finally {
         setLoading(false);
@@ -106,9 +135,11 @@ export default function FeedbackAnalyticsPage() {
     }
     
     if (isAuthenticated) {
+      console.log('Feedback page - User authenticated, fetching feedback');
+      console.log('Feedback page - User info:', user);
       fetchFeedback();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
   
   if (authLoading) {
     return (

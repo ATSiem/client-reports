@@ -19,6 +19,12 @@ const BYPASS_EMAIL_VALIDATION = [
   '/api/system/init-db',
 ];
 
+// List of admin email addresses (all lowercase for comparison)
+const ADMIN_EMAILS = [
+  'asiemiginowski@defactoglobal.com',
+  'bsheridan@defactoglobal.com'
+].map(email => email.toLowerCase());
+
 // Check if we're in development mode
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
@@ -28,6 +34,35 @@ export function middleware(request: NextRequest) {
   
   console.log(`Middleware processing path: ${path}`);
   
+  // Check if this is a feedback-related route
+  const isFeedbackRoute = path.startsWith('/api/admin/feedback') || path.startsWith('/admin/feedback');
+  
+  if (isFeedbackRoute) {
+    // For API routes, check the X-User-Email header
+    if (path.startsWith('/api/')) {
+      const userEmail = request.headers.get('X-User-Email')?.toLowerCase();
+      console.log('API Feedback route access attempt - User email:', userEmail);
+      console.log('Admin emails:', ADMIN_EMAILS);
+      console.log('Is admin?', userEmail && ADMIN_EMAILS.includes(userEmail));
+      
+      if (!userEmail || !ADMIN_EMAILS.includes(userEmail)) {
+        console.log('Access denied to feedback API route for user:', userEmail);
+        return NextResponse.json(
+          {
+            error: "Access denied",
+            message: "Only administrators can access feedback data"
+          },
+          { status: 403 }
+        );
+      }
+    } else {
+      // For client-side routes, let the client-side code handle the admin check
+      // This is because the client-side code has access to the user's email
+      // through the auth context
+      console.log('Client-side feedback route, letting client handle admin check');
+    }
+  }
+
   // Only check authentication for API routes that need protection
   if (PROTECTED_API_PATHS.some(prefix => path.startsWith(prefix))) {
     console.log('Path requires authentication');

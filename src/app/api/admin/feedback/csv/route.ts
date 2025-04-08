@@ -1,15 +1,30 @@
 import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
 
+// List of admin email addresses (all lowercase for comparison)
+const ADMIN_EMAILS = [
+  'asiemiginowski@defactoglobal.com',
+  'bsheridan@defactoglobal.com'
+].map(email => email.toLowerCase());
+
 export async function GET(request: Request) {
   try {
     // Check for authorization header
     const authHeader = request.headers.get('Authorization');
+    const userEmail = request.headers.get('X-User-Email')?.toLowerCase();
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
         { error: 'Authentication required', message: 'Please sign in with your Microsoft account to access this feature' },
         { status: 401 }
+      );
+    }
+    
+    // Check if user is an admin (case-insensitive)
+    if (!userEmail || !ADMIN_EMAILS.includes(userEmail)) {
+      return NextResponse.json(
+        { error: 'Access denied', message: 'Only administrators can access feedback data' },
+        { status: 403 }
       );
     }
     

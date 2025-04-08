@@ -334,7 +334,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (typeof input === 'string' && input.startsWith('/api/')) {
           // Try localStorage first, fall back to sessionStorage
           const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
-          console.log('Adding user email to API request:', userEmail);
+          console.log('AuthProvider - Adding user email to API request:', userEmail);
+          console.log('AuthProvider - Request URL:', input);
           
           // Create new headers object with the user email
           const newInit = { ...init };
@@ -345,6 +346,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ...newInit.headers,
               'X-User-Email': userEmail
             };
+            console.log('AuthProvider - Headers after adding email:', newInit.headers);
           }
           
           return originalFetch(input, newInit);
