@@ -228,38 +228,47 @@ export function getGraphClient() {
   });
 }
 
-// Add a function to get the user's email from Microsoft Graph
-export async function getUserEmail(): Promise<string | null> {
+// Add a synchronous version of getUserEmail that returns a string directly
+let cachedUserEmail: string | null = null;
+
+/**
+ * Get the current user's email synchronously (from cache)
+ * This is used in contexts where we can't use the Promise-based version
+ * @returns The user's email or empty string
+ */
+export function getUserEmailSync(): string {
+  return cachedUserEmail || '';
+}
+
+// Modify the existing getUserEmail function to update the cache
+
+/**
+ * Get the currently logged in user's email address
+ * @returns The user's email address
+ */
+export async function getUserEmail(): Promise<string> {
+  // Check if there's a cached token
+  if (!getUserAccessToken()) {
+    return '';
+  }
+  
+  // Get the user's email from the Microsoft Graph API
   try {
-    // Try to get from session storage first (client-side)
-    if (typeof window !== 'undefined') {
-      const email = sessionStorage.getItem('userEmail');
-      if (email) {
-        console.log('getUserEmail - Retrieved from session storage:', email);
-        return email;
-      }
-    }
-    
-    // If not available in session storage, try to get from Graph API
     const client = getGraphClient();
     if (!client) {
-      console.log('getUserEmail - No Graph client available');
-      return null;
+      return '';
     }
     
-    const response = await client.api('/me').select('mail,userPrincipalName').get();
-    const email = response.mail || response.userPrincipalName;
+    // Get user profile
+    const userInfo = await client.api('/me').select('mail,userPrincipalName').get();
+    const userEmail = userInfo.mail || userInfo.userPrincipalName || '';
     
-    console.log('getUserEmail - Retrieved from Graph API:', email);
+    // Update the cache for synchronous access
+    cachedUserEmail = userEmail;
     
-    // Save to session storage for future use (client-side)
-    if (typeof window !== 'undefined' && email) {
-      sessionStorage.setItem('userEmail', email);
-    }
-    
-    return email;
+    return userEmail;
   } catch (error) {
-    console.error('getUserEmail - Error retrieving user email:', error);
-    return null;
+    console.error('Error getting user email:', error);
+    return '';
   }
 }

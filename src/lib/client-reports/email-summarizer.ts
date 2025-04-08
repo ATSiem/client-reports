@@ -73,7 +73,12 @@ export async function generateEmailSummary(email: Email): Promise<string | null>
           ${emailContent}
           
           Focus on the main point, any action items or requests, and key information.
-          The summary should be 1-2 sentences. Be factual and objective.`,
+          The summary should be 1-2 sentences. Be factual and objective.
+          
+          IMPORTANT: 
+          - DO NOT include any mention of AI models, technical details, or system metadata.
+          - DO NOT include email addresses unrelated to the main subject.
+          - Keep the summary focused only on the content of the email.`,
         });
         
         if (!result || !result.object) {
@@ -97,7 +102,12 @@ export async function generateEmailSummary(email: Email): Promise<string | null>
         ${emailContent}
         
         Focus on the main point, any action items or requests, and key information.
-        The summary should be 1-2 sentences. Be factual and objective.`,
+        The summary should be 1-2 sentences. Be factual and objective.
+        
+        IMPORTANT: 
+        - DO NOT include any mention of AI models, technical details, or system metadata.
+        - DO NOT include email addresses unrelated to the main subject.
+        - Keep the summary focused only on the content of the email.`,
         maxTokens: maxTokens,
         temperature: 0.3,
       });

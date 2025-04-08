@@ -9,6 +9,7 @@ import { getUserAccessToken, setUserAccessToken } from "~/lib/auth/microsoft";
 import { getClientEmails } from "~/lib/client-reports/email-fetcher";
 import { calculateEmailProcessingParams } from "~/lib/ai/model-info";
 import { env } from "~/lib/env";
+import { sanitizeReport } from "~/lib/client-reports/email-sanitizer";
 
 // Schema for the summarize request
 const summarizeRequestSchema = z.object({
@@ -166,8 +167,8 @@ export async function POST(request: Request) {
     endDateObj.setUTCHours(23, 59, 59, 999);
     const endDateIso = endDateObj.toISOString();
     
-    // Calculate model parameters based on environment
-    const { maxEmails, maxTokens } = calculateEmailProcessingParams();
+    // Use environment email limit instead of calculated parameters
+    const maxEmails = env.EMAIL_FETCH_LIMIT || 1000;
     
     // Fetch emails
     const emailResult = await getClientEmails({
@@ -458,10 +459,15 @@ export async function POST(request: Request) {
       const estimatedTokens = Math.ceil(prompt.length / 4);
       console.log(`Summarize API - Estimated tokens: ~${estimatedTokens}`);
       
-      // Add model info to the prompt
-      if (modelInfo) {
-        prompt += `\n\n${modelInfo}`;
-      }
+      // DO NOT add model info to the prompt as it may leak into the report
+      // Instead, add clear instructions about privacy
+      prompt += `\n\nIMPORTANT PRIVACY INSTRUCTIONS:
+      1. DO NOT include any information about AI models or technical implementation details.
+      2. DO NOT include any email content that is not directly related to this client.
+      3. DO NOT mention personal email addresses that are not associated with this client's domains.
+      4. FOCUS ONLY on information that is directly relevant to ${clientName || "this client"}.
+      
+      THIS REPORT MUST FOCUS SOLELY ON THE CLIENT'S COMMUNICATIONS.`;
       
       // Use the configured model from environment variables with timeout handling
       try {
@@ -560,7 +566,7 @@ export async function POST(request: Request) {
     
     console.log('Summarize API - Returning successful response');
     return NextResponse.json({
-      report: result.object.report,
+      report: sanitizeReport(result.object.report, clientName, clientDomains),
       highlights: result.object.highlights,
       emailCount: emails.length,
       fromGraphApi: fromGraphApi

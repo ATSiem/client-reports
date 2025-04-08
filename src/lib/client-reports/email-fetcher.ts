@@ -2,6 +2,7 @@ import { db } from "~/lib/db";
 import { getGraphClient, getUserEmail } from "~/lib/auth/microsoft";
 import { findSimilarEmails } from "./email-embeddings";
 import { queueBackgroundTask } from "./background-processor";
+import { isServiceOrTechnicalEmail, sanitizeContent } from "./email-sanitizer";
 
 // Parameters for email fetching
 interface EmailParams {
@@ -290,17 +291,64 @@ async function getClientEmailsFromDatabase(params: EmailParams) {
     console.log('EmailFetcher - Database query:', query);
     console.log('EmailFetcher - Database query params:', queryParams);
     
-    queryParams.push(maxResults);
+    // Add the maxResults parameter to the query params, converting to string to match expected type
+    queryParams.push(String(maxResults));
     
     // Execute the raw SQL query instead of using the ORM
     const stmt = db.connection.prepare(query);
     const emails = stmt.all(...queryParams);
     
-    // Add source information to emails for weighting
-    return emails.map((email: any) => ({
-      ...email,
-      source: 'database'
-    }));
+    // Add source information to emails for weighting and sanitize sensitive content
+    return emails.map((email: any) => {
+      // First determine the source for weighting
+      let source = 'database';
+      
+      // Apply the same sanitization to database emails
+      const fromEmail = email.from || '';
+      
+      if (fromEmail === userEmail) {
+        source = 'user'; // Email is from the current user
+      } else if (
+        clientEmails.includes(fromEmail) ||
+        clientDomains.some(domain => fromEmail.endsWith(`@${domain}`))
+      ) {
+        source = 'client'; // Email is from a client
+      }
+      
+      // For database emails, we need to parse the recipient strings
+      const toAddress = email.to || '';
+      const ccAddress = email.cc || '';
+      
+      // Split recipient strings
+      const toAddresses = toAddress.split(',').map(addr => addr.trim());
+      const ccAddresses = ccAddress.split(',').map(addr => addr.trim());
+      const allRecipients = [...toAddresses, ...ccAddresses];
+      
+      // Simple rule: Is this email relevant to the client?
+      // Either it's FROM the client, TO the client, or BETWEEN user and client
+      const isClientSender = clientEmails.includes(fromEmail) || 
+                              clientDomains.some(domain => fromEmail.endsWith(`@${domain}`));
+                              
+      const isClientRecipient = allRecipients.some(addr => 
+                               clientEmails.includes(addr) || 
+                               clientDomains.some(domain => addr.endsWith(`@${domain}`)));
+                               
+      const isUserToClient = fromEmail === userEmail && isClientRecipient;
+      const isClientToUser = isClientSender && allRecipients.includes(userEmail);
+      
+      // Only include emails that directly involve the client
+      const isRelevantToClient = isClientSender || isClientRecipient || isUserToClient || isClientToUser;
+      
+      // If it's not relevant to the client, skip this email
+      if (!isRelevantToClient) {
+        return null;
+      }
+      
+      return {
+        ...email,
+        source
+      };
+    }).filter(email => email !== null); // Remove null emails
   } catch (error) {
     console.error('EmailFetcher - Error getting emails from database:', error);
     return [];
@@ -369,130 +417,20 @@ async function getClientEmailsFromGraph(params: EmailParams) {
         // All recipients combined for broader matching
         const allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients];
         
-        // Enhanced matching logic:
+        // Simple rule: Is this email relevant to the client?
+        // Either it's FROM the client, TO the client, or BETWEEN user and client
+        const isClientSender = clientEmails.includes(fromEmail) || 
+                                clientDomains.some(domain => fromEmail.endsWith(`@${domain}`));
+                                
+        const isClientRecipient = allRecipients.some(addr => 
+                                  clientEmails.includes(addr) || 
+                                  clientDomains.some(domain => addr.endsWith(`@${domain}`)));
+                                  
+        const isUserToClient = fromEmail === userEmail && isClientRecipient;
+        const isClientToUser = isClientSender && allRecipients.includes(userEmail);
         
-        // Case 1: Email from user to client (direct or CC/BCC)
-        const isFromUserToClient = 
-          fromEmail === userEmail && 
-          (
-            // Check if any client email is in any recipient field
-            clientEmails.some(email => allRecipients.includes(email)) ||
-            // Check if any client domain is in any recipient field
-            clientDomains.some(domain => 
-              allRecipients.some(recipient => recipient.endsWith(`@${domain}`))
-            )
-          );
-        
-        // Case 2: Email from client to user (as any type of recipient)
-        const isFromClientToUser = 
-          allRecipients.includes(userEmail) &&
-          (
-            // From email matches a client email exactly
-            clientEmails.includes(fromEmail) ||
-            // From email domain matches a client domain
-            clientDomains.some(domain => fromEmail.endsWith(`@${domain}`))
-          );
-        
-        // Case 3: Partial email address matching (for when only username is different)
-        const hasPartialMatch = () => {
-          // Check client domains
-          if (clientDomains && clientDomains.length > 0) {
-            // Original domain matching logic
-            const fromDomainMatch = clientDomains.some(domain => 
-              fromEmail?.includes(`@${domain}`) || fromEmail?.endsWith(`.${domain}`));
-            
-            // Enhanced domain matching - Check if any domain is a subdomain of client domains
-            const fromSubdomainMatch = !fromDomainMatch && clientDomains.some(domain => {
-              const fromParts = fromEmail?.split('@');
-              if (fromParts && fromParts.length > 1) {
-                const fromDomain = fromParts[1];
-                return fromDomain.endsWith(`.${domain}`) || fromDomain === domain;
-              }
-              return false;
-            });
-            
-            if (fromDomainMatch || fromSubdomainMatch) {
-              return true;
-            }
-            
-            // Check recipient, cc and bcc for domain matches
-            const toDomainMatch = toRecipients?.some(addr => 
-              clientDomains.some(domain => addr.includes(`@${domain}`) || addr.endsWith(`.${domain}`)));
-            
-            const ccDomainMatch = ccRecipients?.some(addr => 
-              clientDomains.some(domain => addr.includes(`@${domain}`) || addr.endsWith(`.${domain}`)));
-            
-            const bccDomainMatch = bccRecipients?.some(addr => 
-              clientDomains.some(domain => addr.includes(`@${domain}`) || addr.endsWith(`.${domain}`)));
-            
-            if (toDomainMatch || ccDomainMatch || bccDomainMatch) {
-              return true;
-            }
-          }
-          
-          // Check for specific email matches
-          if (clientEmails && clientEmails.length > 0) {
-            // Check if from address matches any client email
-            if (clientEmails.some(email => fromEmail?.toLowerCase() === email.toLowerCase())) {
-              return true;
-            }
-            
-            // Check if any recipient matches client emails
-            if (toRecipients?.some(addr => clientEmails.some(email => addr.toLowerCase() === email.toLowerCase()))) {
-              return true;
-            }
-            
-            // Check CC recipients
-            if (ccRecipients?.some(addr => clientEmails.some(email => addr.toLowerCase() === email.toLowerCase()))) {
-              return true;
-            }
-            
-            // Check BCC recipients
-            if (bccRecipients?.some(addr => clientEmails.some(email => addr.toLowerCase() === email.toLowerCase()))) {
-              return true;
-            }
-            
-            // Check for partial matches (same domain with different username)
-            for (const clientEmail of clientEmails) {
-              const [, clientDomain] = clientEmail.split('@');
-              if (clientDomain) {
-                // Check if from email uses same domain
-                if (fromEmail?.includes(`@${clientDomain}`)) {
-                  return true;
-                }
-                
-                // Check if any recipient uses same domain
-                if (toRecipients?.some(addr => addr.includes(`@${clientDomain}`)) ||
-                    ccRecipients?.some(addr => addr.includes(`@${clientDomain}`)) ||
-                    bccRecipients?.some(addr => addr.includes(`@${clientDomain}`))) {
-                  return true;
-                }
-              }
-            }
-          }
-          
-          return false;
-        };
-        
-        // Case 4 (to exclude): Both user and client are recipients but from someone else (newsletters, notifications)
-        // We now want to include these as they may be relevant to the client
-        const isNewsletter = 
-          allRecipients.includes(userEmail) && 
-          (
-            clientEmails.some(email => allRecipients.includes(email)) ||
-            clientDomains.some(domain => 
-              allRecipients.some(recipient => recipient.endsWith(`@${domain}`))
-            )
-          ) &&
-          !isFromUserToClient && 
-          !isFromClientToUser;
-        
-        // Include all relevant cases:
-        // - From user to client (any recipient field)
-        // - From client to user (any recipient field)
-        // - Has partial match on email domains of interest
-        // - Include newsletters/notifications when they involve the client
-        return isFromUserToClient || isFromClientToUser || hasPartialMatch() || isNewsletter;
+        // Only include emails that directly involve the client
+        return isClientSender || isClientRecipient || isUserToClient || isClientToUser;
       });
     }
     
@@ -547,13 +485,38 @@ async function getClientEmailsFromGraph(params: EmailParams) {
         source = 'client'; // Email is from a client
       }
       
+      // Extract all recipient email addresses
+      const toRecipientEmails = message.toRecipients?.map(r => r.emailAddress?.address || '') || [];
+      const ccRecipientEmails = message.ccRecipients?.map(r => r.emailAddress?.address || '') || [];
+      const allRecipientEmails = [...toRecipientEmails, ...ccRecipientEmails];
+      
+      // Simple rule: Is this email relevant to the client?
+      // Either it's FROM the client, TO the client, or BETWEEN user and client
+      const isClientSender = clientEmails.includes(fromEmail) || 
+                              clientDomains.some(domain => fromEmail.endsWith(`@${domain}`));
+                              
+      const isClientRecipient = allRecipientEmails.some(addr => 
+                               clientEmails.includes(addr) || 
+                               clientDomains.some(domain => addr.endsWith(`@${domain}`)));
+                               
+      const isUserToClient = fromEmail === userEmail && isClientRecipient;
+      const isClientToUser = isClientSender && allRecipientEmails.includes(userEmail);
+      
+      // Only include emails that directly involve the client
+      const isRelevantToClient = isClientSender || isClientRecipient || isUserToClient || isClientToUser;
+      
+      // If it's not relevant to the client, exclude it completely
+      if (!isRelevantToClient) {
+        return null; // Skip this email
+      }
+      
       // Store CC and BCC data in the appropriate fields
       const ccStr = message.ccRecipients?.map(r => r.emailAddress?.address || '').join(', ') || '';
       const bccStr = message.bccRecipients?.map(r => r.emailAddress?.address || '').join(', ') || '';
       
       const emailData: any = {
         id: message.id,
-        subject: message.subject || '(No Subject)',
+        subject: message.subject || '',
         from: message.from?.emailAddress?.address || '',
         to: message.toRecipients?.[0]?.emailAddress?.address || '',
         date: message.receivedDateTime,
@@ -571,7 +534,7 @@ async function getClientEmailsFromGraph(params: EmailParams) {
       }
       
       return emailData;
-    });
+    }).filter(email => email !== null); // Remove null emails
     
     // Save emails to database
     try {
