@@ -2,8 +2,11 @@ import { z } from "zod";
 
 // Define schema for environment variables with default values
 const envSchema = z.object({
-  // Database
-  SQLITE_DB_PATH: z.string().default('./data/email_agent.db'),
+  // Database - PostgreSQL only
+  DATABASE_URL: z.string().default('postgres://postgres:postgres@db:5432/email_agent'),
+  POSTGRES_USER: z.string().default('postgres'),
+  POSTGRES_PASSWORD: z.string().default('postgres'),
+  POSTGRES_DB: z.string().default('email_agent'),
   
   // OpenAI
   OPENAI_API_KEY: z.string(),

@@ -17,17 +17,17 @@ export async function runMigrations() {
     }
     
     // Create migrations table if it doesn't exist
-    db.connection.prepare(`
+    await db.connection.query(`
       CREATE TABLE IF NOT EXISTS migrations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
-        applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+        applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       )
-    `).run();
+    `);
     
     // Check if migrations have been run
-    const migrationsTable = db.connection.prepare('SELECT name FROM migrations').all();
-    const appliedMigrations = new Set(migrationsTable.map(m => m.name));
+    const migrationsResult = await db.connection.query('SELECT name FROM migrations');
+    const appliedMigrations = new Set(migrationsResult.rows.map(m => m.name));
     
     console.log('Already applied migrations:', Array.from(appliedMigrations));
     
@@ -42,13 +42,14 @@ export async function runMigrations() {
     for (const migration of migrations) {
       if (!appliedMigrations.has(migration.name)) {
         console.log(`Running migration: ${migration.name}`);
-        const success = migration.fn();
+        const success = await migration.fn();
         
         if (success) {
           // Record the migration as applied
-          db.connection.prepare(`
-            INSERT INTO migrations (name) VALUES (?)
-          `).run(migration.name);
+          await db.connection.query(
+            'INSERT INTO migrations (name) VALUES ($1)',
+            [migration.name]
+          );
           
           console.log(`Migration ${migration.name} completed and recorded`);
         } else {

@@ -3,23 +3,35 @@ import { db } from '../index';
 /**
  * Migration to add processed_for_vector column to the messages table
  */
-export function addProcessedForVectorColumn() {
+export async function addProcessedForVectorColumn() {
   try {
     console.log('Starting migration: Adding processed_for_vector column to messages table');
     
     // Check if column already exists
-    // @ts-ignore - connection property is added in db/index.ts
-    const tableInfo = db.connection.prepare('PRAGMA table_info(messages)').all();
+    const tableInfoResult = await db.connection.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'messages' AND table_schema = 'public'
+    `);
     
-    const columnNames = tableInfo.map(col => col.name);
+    const columnNames = tableInfoResult.rows.map(row => row.column_name);
     console.log('Current columns in messages table:', columnNames);
     
     // Add processed_for_vector column if it doesn't exist
     if (!columnNames.includes('processed_for_vector')) {
       console.log('Adding processed_for_vector column to messages table');
-      // @ts-ignore - connection property is added in db/index.ts
-      db.connection.prepare(`ALTER TABLE messages ADD COLUMN processed_for_vector INTEGER DEFAULT 0`).run();
+      await db.connection.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS processed_for_vector BOOLEAN DEFAULT FALSE`);
       console.log('processed_for_vector column added successfully');
+      
+      // Add embedding column for pgvector if it doesn't exist
+      if (!columnNames.includes('embedding')) {
+        console.log('Adding embedding column for pgvector');
+        // First ensure the vector extension exists
+        await db.connection.query(`CREATE EXTENSION IF NOT EXISTS vector`);
+        // Then add the column with pgvector
+        await db.connection.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS embedding vector(1536)`);
+        console.log('embedding column added successfully');
+      }
     } else {
       console.log('processed_for_vector column already exists in messages table');
     }
@@ -34,12 +46,18 @@ export function addProcessedForVectorColumn() {
 
 // Run the migration if this file is executed directly
 if (require.main === module) {
-  const result = addProcessedForVectorColumn();
-  if (result) {
-    console.log('Migration completed successfully');
-    process.exit(0);
-  } else {
-    console.error('Migration failed');
-    process.exit(1);
-  }
+  addProcessedForVectorColumn()
+    .then(result => {
+      if (result) {
+        console.log('Migration completed successfully');
+        process.exit(0);
+      } else {
+        console.error('Migration failed');
+        process.exit(1);
+      }
+    })
+    .catch(error => {
+      console.error('Migration failed with error:', error);
+      process.exit(1);
+    });
 } 

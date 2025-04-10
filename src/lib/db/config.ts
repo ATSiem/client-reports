@@ -2,10 +2,10 @@ import { defineConfig } from "drizzle-kit";
 import { env } from "~/lib/env";
 
 export default defineConfig({
-  dialect: "sqlite",
+  dialect: "pg",
   schema: "./src/lib/db/schema.ts",
   out: "./src/lib/db/migrations",
   dbCredentials: { 
-    url: `file:${env.SQLITE_DB_PATH}`,
+    url: env.DATABASE_URL || "postgres://postgres:postgres@db:5432/email_agent",
   },
 });

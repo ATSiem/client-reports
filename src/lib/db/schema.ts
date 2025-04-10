@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { customVector } from "@useverk/drizzle-pgvector";
 
-export const messages = sqliteTable("messages", {
+export const messages = pgTable("messages", {
   id: text("id").primaryKey(),
   subject: text("subject").notNull(),
   from: text("from").notNull(),
@@ -9,69 +10,71 @@ export const messages = sqliteTable("messages", {
   date: text("date").notNull(),
   body: text("body").notNull(),
   attachments: text("attachments").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" })
+  createdAt: timestamp("created_at")
     .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .defaultNow(),
+  updatedAt: timestamp("updated_at")
     .notNull()
-    .default(sql`(unixepoch())`),
+    .defaultNow(),
   summary: text("summary").notNull(),
-  labels: text("labels").notNull(), // SQLite doesn't support arrays, we'll store JSON string
+  labels: jsonb("labels").notNull().$type<string[]>(), // Use native JSON array
+  cc: text("cc").default(""),
+  bcc: text("bcc").default(""),
   // For vector search
-  embedding: text("embedding"), // JSON string of vector representation
-  processedForVector: integer("processed_for_vector").default(0), // Flag to track embedding generation
+  embedding: customVector("embedding", { dimensions: 1536 }),
+  processedForVector: boolean("processed_for_vector").default(false),
 });
 
-export const clients = sqliteTable("clients", {
+export const clients = pgTable("clients", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  domains: text("domains").notNull(), // JSON string with domains
-  emails: text("emails").notNull(),   // JSON string with specific emails
+  domains: jsonb("domains").notNull().$type<string[]>(), // JSON array with domains
+  emails: jsonb("emails").notNull().$type<string[]>(),   // JSON array with specific emails
   userId: text("user_id"),            // Associate clients with specific users
-  createdAt: integer("created_at", { mode: "timestamp" })
+  createdAt: timestamp("created_at")
     .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .defaultNow(),
+  updatedAt: timestamp("updated_at")
     .notNull()
-    .default(sql`(unixepoch())`),
+    .defaultNow(),
 });
 
-export const reportTemplates = sqliteTable("report_templates", {
+export const reportTemplates = pgTable("report_templates", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   format: text("format").notNull(),
   clientId: text("client_id").references(() => clients.id),
-  createdAt: integer("created_at", { mode: "timestamp" })
+  createdAt: timestamp("created_at")
     .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .defaultNow(),
+  updatedAt: timestamp("updated_at")
     .notNull()
-    .default(sql`(unixepoch())`),
+    .defaultNow(),
   // Track examples provided for this template
   examplePrompt: text("example_prompt"),
 });
 
 // Feedback and evaluation data
-export const reportFeedback = sqliteTable("report_feedback", {
+export const reportFeedback = pgTable("report_feedback", {
   id: text("id").primaryKey(),
   reportId: text("report_id").notNull(),
   clientId: text("client_id").references(() => clients.id),
   rating: integer("rating"), // 1-5 rating
   feedbackText: text("feedback_text"),
-  actionsTaken: text("actions_taken"), // JSON array of actions
+  actionsTaken: jsonb("actions_taken").$type<string[]>(), // JSON array of actions
   // Report generation parameters
   startDate: text("start_date"),
   endDate: text("end_date"),
-  vectorSearchUsed: integer("vector_search_used"), // Boolean as integer
+  vectorSearchUsed: boolean("vector_search_used").default(false),
   searchQuery: text("search_query"),
   emailCount: integer("email_count"),
   // User interaction telemetry
-  copiedToClipboard: integer("copied_to_clipboard"), // Boolean as integer
+  copiedToClipboard: boolean("copied_to_clipboard").default(false),
   generationTimeMs: integer("generation_time_ms"),
   // Tracking
-  createdAt: integer("created_at", { mode: "timestamp" })
+  createdAt: timestamp("created_at")
     .notNull()
-    .default(sql`(unixepoch())`),
+    .defaultNow(),
   // Analytics
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
