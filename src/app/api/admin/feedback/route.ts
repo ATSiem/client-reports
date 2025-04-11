@@ -59,10 +59,10 @@ export async function GET(request: Request) {
     try {
       actionsResult = await db.connection.query(`
         SELECT 
-          unnest(actions_taken) as action,
+          jsonb_array_elements_text(actions_taken) as action,
           COUNT(*) as count
         FROM report_feedback
-        WHERE actions_taken IS NOT NULL AND array_length(actions_taken, 1) > 0
+        WHERE actions_taken IS NOT NULL AND jsonb_array_length(actions_taken) > 0
         GROUP BY action
         ORDER BY count DESC
       `);
