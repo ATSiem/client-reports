@@ -39,11 +39,25 @@ The Client Reports application is being migrated from SQLite to PostgreSQL for b
    ```
 
 3. **Build and Deploy Application**
-   ```bash
-   docker compose down -v
-   docker compose build
-   docker compose up -d
-   ```
+    ```bash
+    # Make the deployment script executable
+    chmod +x ./deploy-prod.sh
+
+    # Run the deployment script which handles environment variables,
+    # builds the container, and starts the services
+    ./deploy-prod.sh
+
+    The deploy-prod.sh script:
+- Sources environment variables from .env.production
+- Builds the application using Docker Compose
+- Starts the containers in detached mode
+- Provides status information during deployment
+
+    If you need to restart the application without rebuilding:
+./run-prod.sh -d
+
+    To view logs:
+docker compose logs -f
 
 4. **Configure Caddy**
    Add to Caddyfile:
