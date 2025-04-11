@@ -1,18 +1,13 @@
 # Client Reports - Production Deployment Plan
 ## Overview
 
-The Client Reports application is being migrated from SQLite to PostgreSQL for better scalability and vector search capabilities. This document outlines the steps required for deployment to the production environment on the Mac mini.
+The Client Reports application uses PostgreSQL for better scalability and vector search capabilities. This document outlines the steps required for deployment to the production environment on the Mac mini.
 
 ## Completed Tasks
 
 - ✅ Setup .env.development for dev (npm run dev) and .env.production for prod (docker compose build)
 - ✅ Configured Dockerfile for Next.js app with PostgreSQL support
 - ✅ Created docker-compose.yml that builds both the Next.js app and PostgreSQL database
-- ✅ Set DATABASE_TYPE to 'postgres' and added proper DATABASE_URL in env files
-- ✅ Configured Drizzle ORM for PostgreSQL compatibility
-- ✅ Created schema migration script to set up PostgreSQL tables
-- ✅ Added pgvector extension for AI search capabilities
-- ✅ Fixed SQL syntax for PostgreSQL compatibility (quoted reserved keywords)
 
 ## Deployment Instructions for Mac Mini
 
@@ -59,17 +54,13 @@ The Client Reports application is being migrated from SQLite to PostgreSQL for b
     To view logs:
 docker compose logs -f
 
-4. **Configure Caddy**
-   Add to Caddyfile:
-   ```
-   comms.solutioncenter.ai {
-       reverse_proxy localhost:3000
-   }
-   ```
-   
-   Restart Caddy:
-   ```bash
-   sudo systemctl restart caddy
+4. **Configure Express/Caddy**
+
+setting up HTTPS for node application:
+- ✅ configured TLS pass-through for comms.solutioncenter.ai to 192.168.10.39:3000
+- ✅ enabled HTTP connectivity to comms.solutioncenter.ai
+- setup HTTPS certificate via Express server
+  - backup plan: setting up another Caddy server on the end server as part of the docker stack to enable the certificate
    ```
 
 5. **Verify Deployment**
@@ -79,7 +70,7 @@ docker compose logs -f
 
 ## DNS Configuration
 - Create an A record pointing comms.solutioncenter.ai to 192.168.10.39
-- Verify SSL certificate is properly provisioned by Caddy
+- Verify SSL certificate is properly provisioned by Express/Caddy
 
 ## Troubleshooting
 
@@ -88,8 +79,3 @@ If the application fails to start:
 2. Verify database connection: `docker compose logs db`
 3. Ensure all environment variables are correctly set
 4. Look for PostgreSQL syntax errors in server logs
-
-## Data Migration (If Needed)
-Instructions for migrating existing SQLite data to PostgreSQL using pgloader:
-```bash
-pgloader sqlite:///path/to/data.db postgresql://postgres:postgres@localhost:5432/email_agent
