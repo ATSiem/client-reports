@@ -13,6 +13,7 @@ import { ThemeToggle } from '~/components/theme-provider';
 export function ClientPage() {
   const [activeView, setActiveView] = useState('clients'); // 'clients', 'templates', 'generate'
   const [selectedClientId, setSelectedClientId] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   
   const { isAuthenticated, isLoading: authLoading, user, logout } = useAuth();
 
@@ -129,6 +130,7 @@ export function ClientPage() {
                 <TemplateList
                   onSelectTemplate={(templateId) => {
                     // Handle template selection
+                    setSelectedTemplateId(templateId);
                     setActiveView('generate');
                   }}
                 />
@@ -138,6 +140,7 @@ export function ClientPage() {
             {activeView === 'generate' && (
               <ReportGenerator 
                 initialClientId={selectedClientId}
+                initialTemplateId={selectedTemplateId}
                 onReportGenerated={() => {
                   // Handle report generation success
                 }}

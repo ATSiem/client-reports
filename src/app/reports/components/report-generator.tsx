@@ -21,14 +21,15 @@ interface Template {
 
 interface ReportGeneratorProps {
   initialClientId?: string | null;
+  initialTemplateId?: string | null;
   onReportGenerated?: () => void;
 }
 
-export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGeneratorProps) {
+export function ReportGenerator({ initialClientId, initialTemplateId, onReportGenerated }: ReportGeneratorProps) {
   const [clients, setClients] = useState<Client[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClientId || null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(initialTemplateId || null);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Default report format
@@ -143,12 +144,6 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
   
   // Fetch templates when client changes
   useEffect(() => {
-    if (!selectedClientId) {
-      setTemplates([]);
-      setClientEmails([]);
-      return;
-    }
-    
     async function fetchTemplates() {
       try {
         // Get the authentication token
@@ -158,7 +153,11 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
           throw new Error('Authentication required. Please sign in again.');
         }
         
-        const response = await fetch(`/api/templates?clientId=${selectedClientId}`, {
+        const url = selectedClientId 
+          ? `/api/templates?clientId=${selectedClientId}`
+          : '/api/templates';
+        
+        const response = await fetch(url, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -174,10 +173,14 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
         setTemplates(data.templates || []);
         
         // Get client details to set emails
-        const selectedClient = clients.find(c => c.id === selectedClientId);
-        if (selectedClient && selectedClient.emails) {
-          console.log('ReportGenerator - Setting client emails:', selectedClient.emails);
-          setClientEmails(selectedClient.emails);
+        if (selectedClientId) {
+          const selectedClient = clients.find(c => c.id === selectedClientId);
+          if (selectedClient && selectedClient.emails) {
+            console.log('ReportGenerator - Setting client emails:', selectedClient.emails);
+            setClientEmails(selectedClient.emails);
+          } else {
+            setClientEmails([]);
+          }
         } else {
           setClientEmails([]);
         }
@@ -444,7 +447,6 @@ export function ReportGenerator({ initialClientId, onReportGenerated }: ReportGe
                 value={selectedTemplateId || ''}
                 onChange={(e) => setSelectedTemplateId(e.target.value || null)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                disabled={!selectedClientId}
               >
                 <option value="">Default</option>
                 {templates.map((template) => (
