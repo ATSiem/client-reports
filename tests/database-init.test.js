@@ -58,9 +58,37 @@ describe('Database Initialization', () => {
     }
   });
   
-  test.skip('should create database with correct schema', () => {
-    // This test needs to be updated for PostgreSQL
-    console.log('Skipping for now - needs to be updated for PostgreSQL');
+  test('should create database with correct schema', async () => {
+    // Drop tables if they exist to simulate a fresh start
+    await pool.query("DROP TABLE IF EXISTS clients, messages, report_templates, report_feedback CASCADE");
+
+    // Run the initialization script to create tables
+    execSync('node scripts/init-database.js', {
+      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+    });
+
+    // Query for expected tables
+    const result = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+        AND table_name IN ('clients', 'messages', 'report_templates', 'report_feedback')
+    `);
+
+    const tableNames = result.rows.map(row => row.table_name);
+    expect(tableNames).toContain('clients');
+    expect(tableNames).toContain('messages');
+    expect(tableNames).toContain('report_templates');
+    expect(tableNames).toContain('report_feedback');
+
+    // Check that clients table has user_id column
+    const result2 = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'clients' AND column_name = 'user_id'
+    `);
+    expect(result2.rows.length).toBe(1);
+    expect(result2.rows[0].column_name).toBe('user_id');
   });
   
   test('should handle existing database with missing user_id column', async () => {

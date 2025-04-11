@@ -28,7 +28,7 @@ describe('Process Summaries API', () => {
   });
   
   // Conditionally run or skip tests based on server availability
-  const conditionalTest = serverRunning ? test : test.skip;
+  const conditionalTest = test;
   
   conditionalTest('API should accept POST requests and return a task ID', async () => {
     const response = await fetch(API_URL, {
@@ -88,11 +88,4 @@ describe('Process Summaries API', () => {
       expect(data).toHaveProperty('taskId');
     }
   }, 10000); // Increase timeout for API call
-  
-  afterAll(() => {
-    if (!serverRunning) {
-      console.warn('\x1b[31m\x1b[1m⚠️ IMPORTANT: Some tests were skipped because the server was not running.\x1b[0m');
-      console.warn('\x1b[31m\x1b[1m   For complete test coverage, please start the server and run tests again.\x1b[0m');
-    }
-  });
 }); 
