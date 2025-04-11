@@ -47,6 +47,18 @@ export async function GET(request: Request) {
     let userEmail = request.headers.get('X-User-Email');
     console.log('Clients API - User email from request headers:', userEmail);
     
+    // Check both header formats to ensure we don't miss the email
+    if (!userEmail) {
+      userEmail = request.headers.get('x-user-email');
+      console.log('Clients API - Checking lowercase header, email:', userEmail);
+    }
+    
+    // Ensure email is normalized to lowercase for consistency
+    if (userEmail) {
+      userEmail = userEmail.toLowerCase();
+      console.log('Clients API - Normalized user email:', userEmail);
+    }
+    
     // In development mode, use a default email if none is provided
     if (!userEmail && isDevelopment) {
       userEmail = 'dev@example.com';
@@ -75,9 +87,11 @@ export async function GET(request: Request) {
       console.log('Clients API - Fetching single client:', clientId);
       // Fetch a single client, ensuring it belongs to the current user
       const { rows } = await db.connection.query(
-        `SELECT * FROM clients WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`,
+        `SELECT * FROM clients WHERE id = $1 AND (LOWER(user_id) = LOWER($2) OR user_id IS NULL)`,
         [clientId, userEmail]
       );
+      
+      console.log('Clients API - Query result rows:', rows.length);
       
       if (rows.length === 0) {
         console.log('Clients API - Client not found or does not belong to user');
@@ -96,12 +110,21 @@ export async function GET(request: Request) {
     } else {
       console.log('Clients API - Fetching all clients for user:', userEmail);
       // Fetch all clients for the current user, including those without a user_id (for backward compatibility)
-      // Using parameterized query for PostgreSQL
+      // Using parameterized query for PostgreSQL with case-insensitive comparison
       const { rows: clients } = await db.connection.query(
-        'SELECT * FROM clients WHERE user_id = $1 OR user_id IS NULL ORDER BY name ASC',
+        'SELECT * FROM clients WHERE LOWER(user_id) = LOWER($1) OR user_id IS NULL ORDER BY name ASC',
         [userEmail]
       );
       console.log('Clients API - Found', clients.length, 'clients for user');
+      
+      // Log the user_id values to help debug
+      if (clients.length > 0) {
+        console.log('Clients API - User IDs in returned clients:', clients.map(c => c.user_id));
+      } else {
+        // Try running a more permissive query to see what clients exist
+        const { rows: allClients } = await db.connection.query('SELECT id, name, user_id FROM clients LIMIT 10');
+        console.log('Clients API - Sample of available clients:', allClients);
+      }
       
       // Parse JSON strings back to arrays for each client
       const formattedClients = clients.map(client => ({

@@ -339,7 +339,27 @@ export async function findSimilarEmails(query: string, options: {
     params.push(limit);
     
     console.log('EmailEmbeddings - Vector search query:', vectorSearchQuery);
-    console.log('EmailEmbeddings - Query parameters:', params.map(p => typeof p === 'object' ? '[embedding]' : p));
+    console.log('EmailEmbeddings - Query parameters:', params.map(p => {
+      if (typeof p === 'string' && p.startsWith('[') && p.endsWith(']')) {
+        // This is likely a vector embedding formatted for Postgres
+        try {
+          // Extract vector values from string format '[x,y,z,...]'
+          const vectorStr = p.substring(1, p.length - 1);
+          const values = vectorStr.split(',').map(v => parseFloat(v));
+          
+          if (values.length > 6) {
+            // Show only first 3 and last 3 coordinates
+            const firstThree = values.slice(0, 3);
+            const lastThree = values.slice(-3);
+            return `[${firstThree.join(',')},...,${lastThree.join(',')}]`;
+          }
+          return p; // Return as is if vector is 6 or fewer elements
+        } catch (e) {
+          return '[embedding]'; // Fallback if parsing fails
+        }
+      }
+      return p; // Return non-vector parameters as is
+    }));
     
     // Execute vector search
     const result = await db.connection.query(vectorSearchQuery, params);
