@@ -74,9 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Function to add user email to request headers
   const addUserEmailToHeaders = (email: string | undefined) => {
     if (typeof window !== 'undefined' && email) {
-      console.log('Storing user email in session storage:', email);
+      const lowercaseEmail = email.toLowerCase();
+      console.log('Storing user email in session storage:', lowercaseEmail);
       // Store the email in sessionStorage for use in API requests
-      sessionStorage.setItem('userEmail', email);
+      sessionStorage.setItem('userEmail', lowercaseEmail);
     }
   };
 
@@ -477,7 +478,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (userEmail) {
             newInit.headers = {
               ...newInit.headers,
-              'X-User-Email': userEmail
+              'X-User-Email': userEmail.toLowerCase()
             };
           }
           
