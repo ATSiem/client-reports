@@ -56,6 +56,32 @@ async function initializeDatabase() {
       console.log('All tables exist, skipping schema migrations');
     }
     
+    // Check for and add user_id column to clients table if it doesn't exist
+    const userIdColumnCheck = await pool.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'clients' AND column_name = 'user_id';
+    `);
+    
+    if (userIdColumnCheck.rows.length === 0) {
+      console.log('Adding user_id column to clients table...');
+      try {
+        await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS user_id TEXT;`);
+        
+        // Record this migration
+        await pool.query(`
+          INSERT INTO migrations (name)
+          VALUES ('add_user_id_column')
+          ON CONFLICT (name) DO NOTHING;
+        `);
+        console.log('Successfully added user_id column to clients table');
+      } catch (err) {
+        console.error('Error adding user_id column:', err);
+      }
+    } else {
+      console.log('user_id column already exists in clients table');
+    }
+    
     // Close the pool
     await pool.end();
     

@@ -1,0 +1,62 @@
+-- Create tables for the application
+
+-- Messages table for storing email data
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  subject TEXT NOT NULL,
+  "from" TEXT NOT NULL,
+  "to" TEXT NOT NULL,
+  date TEXT NOT NULL,
+  body TEXT NOT NULL,
+  attachments TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  summary TEXT NOT NULL,
+  labels JSONB DEFAULT '[]' NOT NULL,
+  cc TEXT DEFAULT '',
+  bcc TEXT DEFAULT '',
+  embedding VECTOR(1536),
+  processed_for_vector BOOLEAN DEFAULT FALSE
+);
+
+-- Clients table for storing client information
+CREATE TABLE IF NOT EXISTS clients (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  domains JSONB NOT NULL,
+  emails JSONB NOT NULL,
+  user_id TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+-- Report templates table for storing report formats
+CREATE TABLE IF NOT EXISTS report_templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  format TEXT NOT NULL,
+  client_id TEXT REFERENCES clients(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  example_prompt TEXT
+);
+
+-- Report feedback table for storing user feedback on reports
+CREATE TABLE IF NOT EXISTS report_feedback (
+  id TEXT PRIMARY KEY,
+  report_id TEXT NOT NULL,
+  client_id TEXT REFERENCES clients(id),
+  rating INTEGER,
+  feedback_text TEXT,
+  actions_taken JSONB,
+  start_date TEXT,
+  end_date TEXT,
+  vector_search_used BOOLEAN DEFAULT FALSE,
+  search_query TEXT,
+  email_count INTEGER,
+  copied_to_clipboard BOOLEAN DEFAULT FALSE,
+  generation_time_ms INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  user_agent TEXT,
+  ip_address TEXT
+);

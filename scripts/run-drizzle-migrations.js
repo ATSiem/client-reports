@@ -16,9 +16,22 @@ async function runDrizzleMigrations() {
 
     console.log('Connected to PostgreSQL for schema migrations');
 
+    // Check for vector extension in development mode
+    let vectorExtensionAvailable = true;
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        // Try to check if the vector extension is available
+        await pool.query(`SELECT 'vector'::regtype;`);
+        console.log('Vector extension is available');
+      } catch (e) {
+        console.log('Vector extension is not available in development mode, will use TEXT for the embedding column');
+        vectorExtensionAvailable = false;
+      }
+    }
+
     // Read schema.sql file which contains the table definitions
     const schemaDir = path.join(__dirname, '../src/lib/db/migrations');
-    const schemaPath = path.join(schemaDir, 'schema.sql');
+    let schemaPath = path.join(schemaDir, 'schema.sql');
     
     // Create directory if it doesn't exist
     if (!fs.existsSync(schemaDir)) {
@@ -31,7 +44,7 @@ async function runDrizzleMigrations() {
       console.log('Schema file not found, creating from scripts/schema.sql');
       
       // Here's the SQL for creating the database tables - copied from the schema.ts
-      const schemaSQL = `
+      let schemaSQL = `
 -- Create tables for the application
 
 -- Messages table for storing email data
@@ -49,7 +62,7 @@ CREATE TABLE IF NOT EXISTS messages (
   labels JSONB DEFAULT '[]' NOT NULL,
   cc TEXT DEFAULT '',
   bcc TEXT DEFAULT '',
-  embedding VECTOR(1536),
+  embedding ${vectorExtensionAvailable ? 'VECTOR(1536)' : 'TEXT'},
   processed_for_vector BOOLEAN DEFAULT FALSE
 );
 
@@ -99,6 +112,18 @@ CREATE TABLE IF NOT EXISTS report_feedback (
       // Write the schema SQL to a file
       fs.writeFileSync(schemaPath, schemaSQL, 'utf8');
       console.log('Created schema.sql file');
+    } else {
+      // If schema file exists but we need to modify it for development
+      if (!vectorExtensionAvailable && process.env.NODE_ENV === 'development') {
+        let schemaSql = fs.readFileSync(schemaPath, 'utf8');
+        // Replace VECTOR type with TEXT type for development
+        schemaSql = schemaSql.replace(/embedding VECTOR\(1536\)/g, 'embedding TEXT');
+        // Use the modified schema
+        const devSchemaPath = schemaPath + '.dev';
+        fs.writeFileSync(devSchemaPath, schemaSql, 'utf8');
+        console.log('Created development-compatible schema.sql file');
+        schemaPath = devSchemaPath;
+      }
     }
     
     // Read the schema SQL
