@@ -2,6 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { db } from "~/lib/db";
 import { messages } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { getGraphClient } from "~/lib/auth/microsoft";
 
 import { getCurrentModelSpec } from "~/lib/ai/model-info";
 import { env } from "~/lib/env";
@@ -18,7 +19,7 @@ const BATCH_SIZE = env.EMBEDDING_BATCH_SIZE;
 const embeddingModel = getCurrentModelSpec('embedding');
 const EMBEDDING_DIMENSION = embeddingModel.embeddingDimension || 1536; // Default to 1536 as fallback
 
-console.log(`EmailEmbeddings - Using model: ${embeddingModel.modelId}, dimension: ${EMBEDDING_DIMENSION}`)
+console.log(`EmailEmbeddings - Using model: ${embeddingModel.name}, dimension: ${EMBEDDING_DIMENSION}`)
 
 /**
  * Generate and store embeddings for emails that haven't been processed yet
@@ -30,14 +31,14 @@ export async function processEmailEmbeddings(limit = process.env.EMAIL_EMBEDDING
     console.log('EmailEmbeddings - Starting embedding generation for unprocessed emails');
     
     // Get emails that need embeddings
-    const stmt = db.connection.prepare(`
+    const unprocessedEmailsResult = await db.connection.query(`
       SELECT id, subject, body, summary 
       FROM messages 
-      WHERE processed_for_vector = 0 OR embedding IS NULL
-      LIMIT ?
-    `);
+      WHERE processed_for_vector = false OR embedding IS NULL
+      LIMIT $1
+    `, [limit]);
     
-    const unprocessedEmails = stmt.all(limit);
+    const unprocessedEmails = unprocessedEmailsResult.rows;
     console.log(`EmailEmbeddings - Found ${unprocessedEmails.length} emails to process`);
     
     if (unprocessedEmails.length === 0) {
@@ -58,17 +59,27 @@ export async function processEmailEmbeddings(limit = process.env.EMAIL_EMBEDDING
           
           // Store the embedding in the database
           if (embedding) {
-            const updateStmt = db.connection.prepare(`
-              UPDATE messages 
-              SET embedding = ?, processed_for_vector = 1, updated_at = unixepoch()
-              WHERE id = ?
-            `);
+            // Format embedding for PostgreSQL vector type
+            const formattedEmbedding = formatEmbeddingForPostgres(embedding);
             
-            updateStmt.run(JSON.stringify(embedding), email.id);
+            await db.connection.query(`
+              UPDATE messages 
+              SET embedding = $1, processed_for_vector = true, updated_at = NOW()
+              WHERE id = $2
+            `, [formattedEmbedding, email.id]);
             processedCount++;
           }
         } catch (err) {
-          console.error(`EmailEmbeddings - Error processing email ${email.id}:`, err);
+          // Reduce verbosity by not printing full vector in error
+          const errorMessage = err.message || String(err);
+          const truncatedError = errorMessage.length > 150 ? 
+            `${errorMessage.substring(0, 150)}... [truncated]` : errorMessage;
+          
+          console.error(`EmailEmbeddings - Error processing email ${email.id}:`, truncatedError);
+          
+          if (err.stack) {
+            console.error(`Stack trace: ${err.stack.split('\n')[0]}`);
+          }
         }
       }));
       
@@ -81,8 +92,13 @@ export async function processEmailEmbeddings(limit = process.env.EMAIL_EMBEDDING
     console.log(`EmailEmbeddings - Successfully processed ${processedCount} emails`);
     return { success: true, processed: processedCount };
   } catch (error) {
-    console.error('EmailEmbeddings - Error processing email embeddings:', error);
-    return { success: false, error: String(error) };
+    // Truncate long error messages
+    const errorMessage = error.message || String(error);
+    const truncatedError = errorMessage.length > 150 ? 
+      `${errorMessage.substring(0, 150)}... [truncated]` : errorMessage;
+      
+    console.error('EmailEmbeddings - Error processing email embeddings:', truncatedError);
+    return { success: false, error: truncatedError };
   }
 }
 
@@ -121,9 +137,60 @@ async function generateEmbedding(email: { id: string, subject: string, body: str
     }
     
     const result = await response.json();
+    // Return the raw embedding array
     return result.data[0].embedding;
   } catch (err) {
     console.error(`EmailEmbeddings - Error generating embedding for email ${email.id}:`, err);
+    return null;
+  }
+}
+
+// Helper function to convert embedding format for PostgreSQL vector type
+function formatEmbeddingForPostgres(embedding) {
+  if (!embedding || !Array.isArray(embedding)) {
+    return null;
+  }
+  
+  // Convert array to PostgreSQL vector format - using square brackets instead of curly braces
+  return `[${embedding.join(',')}]`;
+}
+
+/**
+ * Get the current user's email - works in both browser and server contexts
+ */
+async function getUserEmail() {
+  try {
+    // For browser environments, use sessionStorage
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const storedEmail = sessionStorage.getItem('userEmail');
+      if (storedEmail) {
+        return storedEmail;
+      }
+    }
+    
+    // For server-side context, try to get from Graph API
+    try {
+      const client = getGraphClient();
+      if (client) {
+        const userInfo = await client.api('/me').select('mail,userPrincipalName').get();
+        const userEmail = userInfo.mail || userInfo.userPrincipalName || '';
+        
+        if (userEmail) {
+          return userEmail;
+        }
+      }
+    } catch (graphError) {
+      console.log('EmailEmbeddings - Could not get user email from Graph API:', graphError);
+    }
+    
+    // If we're in development mode, provide a fallback email for testing
+    if (process.env.NODE_ENV === 'development') {
+      return process.env.DEFAULT_USER_EMAIL || 'dev@example.com';
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('EmailEmbeddings - Error getting user email:', error);
     return null;
   }
 }
@@ -147,11 +214,43 @@ export async function findSimilarEmails(query: string, options: {
       clientEmails = []
     } = options;
 
-    // Check if cc and bcc columns exist in the database
-    const columnInfo = await db.connection.get('PRAGMA table_info(messages)');
-    const hasCcBccColumns = columnInfo.some((column: any) => column.name === 'cc') && 
-                           columnInfo.some((column: any) => column.name === 'bcc');
+    // Check if vector extension is properly set up
+    let vectorExtensionAvailable = true;
+    try {
+      // Check if the vector column type is available
+      await db.connection.query(`SELECT 'vector'::regtype;`);
+    } catch (e) {
+      console.log('Vector extension is not available, will use text-based search instead');
+      vectorExtensionAvailable = false;
+    }
+
+    // Check the actual type of the embedding column
+    const columnTypeResult = await db.connection.query(`
+      SELECT data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'messages' AND column_name = 'embedding'
+    `);
     
+    const embeddingColumnType = columnTypeResult.rows.length > 0 ? columnTypeResult.rows[0].data_type : null;
+    console.log(`EmailEmbeddings - Embedding column type: ${embeddingColumnType}`);
+    
+    // Determine if vector search is possible
+    const canUseVectorSearch = vectorExtensionAvailable && embeddingColumnType !== 'text';
+    
+    if (!canUseVectorSearch) {
+      console.log('EmailEmbeddings - Cannot use vector search, falling back to text search');
+      // Return empty array since the real search will be done by standard SQL query
+      return [];
+    }
+
+    // Check if cc and bcc columns exist in the database
+    const columnInfoResult = await db.connection.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'messages' AND column_name IN ('cc', 'bcc')
+    `);
+    
+    const hasCcBccColumns = columnInfoResult.rows.length === 2;
     console.log(`EmailEmbeddings - Vector search has cc/bcc columns: ${hasCcBccColumns}`);
     
     // If columns don't exist, log a warning but continue
@@ -179,24 +278,19 @@ export async function findSimilarEmails(query: string, options: {
     // Build client email conditions with checks against both FROM and TO fields
     const emailConditions = [];
     
-    if (userEmail) {
-      const sanitizedUserEmail = userEmail.replace(/'/g, "''");  // SQL escape single quotes
-      
-      // Add conditions for each client email
-      clientEmails.forEach(clientEmail => {
-        const sanitizedClientEmail = clientEmail.replace(/'/g, "''");  // SQL escape single quotes
-        if (hasCcBccColumns) {
-          // User to client
-          emailConditions.push(`("from" = '${sanitizedUserEmail}' AND ("to" = '${sanitizedClientEmail}' OR "cc" LIKE '%${sanitizedClientEmail}%' OR "bcc" LIKE '%${sanitizedClientEmail}%'))`);
-          // Client to user
-          emailConditions.push(`("from" = '${sanitizedClientEmail}' AND ("to" = '${sanitizedUserEmail}' OR "cc" LIKE '%${sanitizedUserEmail}%' OR "bcc" LIKE '%${sanitizedUserEmail}%'))`);
-        } else {
-          // User to client
-          emailConditions.push(`("from" = '${sanitizedUserEmail}' AND "to" = '${sanitizedClientEmail}')`);
-          // Client to user
-          emailConditions.push(`("from" = '${sanitizedClientEmail}' AND "to" = '${sanitizedUserEmail}')`);
-        }
+    if (clientEmails.length > 0) {
+      const emailFilters = clientEmails.map(email => {
+        const sanitizedEmail = email.replace(/'/g, "''");  // SQL escape single quotes
+        return `("from" LIKE '%${sanitizedEmail}%' OR "to" LIKE '%${sanitizedEmail}%'${hasCcBccColumns ? ` OR "cc" LIKE '%${sanitizedEmail}%' OR "bcc" LIKE '%${sanitizedEmail}%'` : ''})`;
       });
+      
+      emailConditions.push(`(${emailFilters.join(' OR ')})`);
+    }
+    
+    // Add user's own email to filter, if available
+    if (userEmail) {
+      const sanitizedUserEmail = userEmail.replace(/'/g, "''");
+      emailConditions.push(`("from" LIKE '%${sanitizedUserEmail}%' OR "to" LIKE '%${sanitizedUserEmail}%'${hasCcBccColumns ? ` OR "cc" LIKE '%${sanitizedUserEmail}%' OR "bcc" LIKE '%${sanitizedUserEmail}%'` : ''})`);
     }
     
     // Combine all email conditions
@@ -209,44 +303,50 @@ export async function findSimilarEmails(query: string, options: {
       return [];
     }
     
-    // Convert embedding to string for SQL
-    const queryEmbeddingStr = JSON.stringify(queryEmbedding);
-    
     // Build date conditions
     const dateConditions = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+    
     if (startDate) {
       const startDateStr = new Date(startDate).toISOString().split('T')[0];
-      dateConditions.push(`date >= '${startDateStr}'`);
+      dateConditions.push(`date >= $${paramIndex++}`);
+      params.push(startDateStr);
     }
     if (endDate) {
       const endDateStr = new Date(endDate).toISOString().split('T')[0];
-      dateConditions.push(`date <= '${endDateStr}'`);
+      dateConditions.push(`date <= $${paramIndex++}`);
+      params.push(endDateStr);
     }
     
     // Combine date conditions
     const dateFilter = dateConditions.length > 0 ? `AND ${dateConditions.join(' AND ')}` : '';
     
-    // Build the SQL query for vector search
+    // Build the SQL query for vector search using PostgreSQL vector extension
     const vectorSearchQuery = `
-      SELECT id, subject, from, to, date, body, summary, 
-        json_extract(embedding, '$') as embedding_json,
-        (SELECT cosine_similarity(json_extract(embedding, '$'), json('${queryEmbeddingStr}'))) as similarity
+      SELECT id, subject, "from" as from, "to" as to, date, body, summary, 
+        embedding,
+        (embedding <=> $${paramIndex}) as similarity
       FROM messages
       WHERE embedding IS NOT NULL ${dateFilter}
         AND (${emailFilter}${domainConditions})
-      ORDER BY similarity DESC
-      LIMIT ${limit}
+      ORDER BY similarity ASC
+      LIMIT $${paramIndex+1}
     `;
     
-    console.log('EmailEmbeddings - Vector search query:', vectorSearchQuery);
+    // Add vector embedding and limit parameters
+    params.push(queryEmbedding);
+    params.push(limit);
     
-    // Execute the query
-    const results = await db.connection.all(vectorSearchQuery);
+    console.log('EmailEmbeddings - Vector search query:', vectorSearchQuery);
+    console.log('EmailEmbeddings - Query parameters:', params.map(p => typeof p === 'object' ? '[embedding]' : p));
+    
+    // Execute vector search
+    const result = await db.connection.query(vectorSearchQuery, params);
     
     // Process results
-    return results.map((result: any) => ({
-      ...result,
-      embedding: JSON.parse(result.embedding_json || '[]'),
+    return result.rows.map((row: any) => ({
+      ...row,
       source: 'vector_search'
     }));
   } catch (error) {
@@ -280,7 +380,10 @@ async function generateEmbeddingForQuery(query: string) {
     }
     
     const result = await response.json();
-    return result.data[0].embedding;
+    const embedding = result.data[0].embedding;
+    
+    // Format the embedding for PostgreSQL vector search
+    return formatEmbeddingForPostgres(embedding);
   } catch (err) {
     console.error('EmailEmbeddings - Error generating embedding for query:', err);
     return null;
