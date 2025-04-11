@@ -79,4 +79,3 @@ If the application fails to start:
 Instructions for migrating existing SQLite data to PostgreSQL using pgloader:
 ```bash
 pgloader sqlite:///path/to/data.db postgresql://postgres:postgres@localhost:5432/email_agent
-```

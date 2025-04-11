@@ -60,14 +60,14 @@ export async function GET(request: Request) {
     
     if (templateId) {
       // Fetch a single template
-      const stmt = db.connection.prepare(`
+      const result = await db.connection.query(`
         SELECT t.*, c.name as client_name
         FROM report_templates t
         LEFT JOIN clients c ON t.client_id = c.id
-        WHERE t.id = ?
-      `);
+        WHERE t.id = $1
+      `, [templateId]);
       
-      const template = stmt.get(templateId);
+      const template = result.rows[0];
       
       if (!template) {
         return NextResponse.json({ error: "Template not found" }, { status: 404 });
@@ -76,29 +76,25 @@ export async function GET(request: Request) {
       return NextResponse.json(template);
     } else if (clientId) {
       // Fetch templates for a specific client
-      const stmt = db.connection.prepare(`
+      const result = await db.connection.query(`
         SELECT t.*, c.name as client_name
         FROM report_templates t
         LEFT JOIN clients c ON t.client_id = c.id
-        WHERE t.client_id = ?
+        WHERE t.client_id = $1
         ORDER BY t.name ASC
-      `);
+      `, [clientId]);
       
-      const templates = stmt.all(clientId);
-      
-      return NextResponse.json({ templates });
+      return NextResponse.json({ templates: result.rows });
     } else {
       // Fetch all templates
-      const stmt = db.connection.prepare(`
+      const result = await db.connection.query(`
         SELECT t.*, c.name as client_name
         FROM report_templates t
         LEFT JOIN clients c ON t.client_id = c.id
         ORDER BY t.name ASC
       `);
       
-      const templates = stmt.all();
-      
-      return NextResponse.json({ templates });
+      return NextResponse.json({ templates: result.rows });
     }
   } catch (error) {
     console.error("Error fetching templates:", error);
@@ -156,11 +152,11 @@ export async function POST(request: Request) {
     
     // If clientId is provided, check if client exists
     if (data.clientId) {
-      const checkClientStmt = db.connection.prepare(`
-        SELECT id FROM clients WHERE id = ?
-      `);
+      const clientResult = await db.connection.query(`
+        SELECT id FROM clients WHERE id = $1
+      `, [data.clientId]);
       
-      const existingClient = checkClientStmt.get(data.clientId);
+      const existingClient = clientResult.rows[0];
       
       if (!existingClient) {
         return NextResponse.json(
@@ -174,18 +170,16 @@ export async function POST(request: Request) {
     const templateId = crypto.randomUUID();
     
     // Insert the new template
-    const stmt = db.connection.prepare(`
+    await db.connection.query(`
       INSERT INTO report_templates (id, name, format, client_id, created_at, updated_at, example_prompt)
-      VALUES (?, ?, ?, ?, unixepoch(), unixepoch(), ?)
-    `);
-    
-    stmt.run(
+      VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
+    `, [
       templateId,
       data.name,
       data.format,
       data.clientId || null,
       data.examplePrompt || null
-    );
+    ]);
     
     return NextResponse.json({
       id: templateId,
@@ -268,11 +262,11 @@ export async function PUT(request: Request) {
     const data = templateSchema.parse(body);
     
     // Check if template exists
-    const checkTemplateStmt = db.connection.prepare(`
-      SELECT id FROM report_templates WHERE id = ?
-    `);
+    const templateResult = await db.connection.query(`
+      SELECT id FROM report_templates WHERE id = $1
+    `, [templateId]);
     
-    const existingTemplate = checkTemplateStmt.get(templateId);
+    const existingTemplate = templateResult.rows[0];
     
     if (!existingTemplate) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
@@ -280,11 +274,11 @@ export async function PUT(request: Request) {
     
     // If clientId is provided, check if client exists
     if (data.clientId) {
-      const checkClientStmt = db.connection.prepare(`
-        SELECT id FROM clients WHERE id = ?
-      `);
+      const clientResult = await db.connection.query(`
+        SELECT id FROM clients WHERE id = $1
+      `, [data.clientId]);
       
-      const existingClient = checkClientStmt.get(data.clientId);
+      const existingClient = clientResult.rows[0];
       
       if (!existingClient) {
         return NextResponse.json(
@@ -295,19 +289,17 @@ export async function PUT(request: Request) {
     }
     
     // Update the template
-    const updateStmt = db.connection.prepare(`
+    await db.connection.query(`
       UPDATE report_templates
-      SET name = ?, format = ?, client_id = ?, updated_at = unixepoch(), example_prompt = ?
-      WHERE id = ?
-    `);
-    
-    updateStmt.run(
+      SET name = $1, format = $2, client_id = $3, updated_at = NOW(), example_prompt = $4
+      WHERE id = $5
+    `, [
       data.name,
       data.format,
       data.clientId || null,
       data.examplePrompt || null,
       templateId
-    );
+    ]);
     
     return NextResponse.json({
       id: templateId,
@@ -386,22 +378,20 @@ export async function DELETE(request: Request) {
     }
     
     // Check if template exists
-    const checkStmt = db.connection.prepare(`
-      SELECT id FROM report_templates WHERE id = ?
-    `);
+    const templateResult = await db.connection.query(`
+      SELECT id FROM report_templates WHERE id = $1
+    `, [templateId]);
     
-    const existingTemplate = checkStmt.get(templateId);
+    const existingTemplate = templateResult.rows[0];
     
     if (!existingTemplate) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
     
     // Delete the template
-    const deleteStmt = db.connection.prepare(`
-      DELETE FROM report_templates WHERE id = ?
-    `);
-    
-    deleteStmt.run(templateId);
+    await db.connection.query(`
+      DELETE FROM report_templates WHERE id = $1
+    `, [templateId]);
     
     return NextResponse.json({ success: true });
   } catch (error) {

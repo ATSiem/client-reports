@@ -270,31 +270,27 @@ export async function PUT(request: Request) {
     const data = clientSchema.parse(body);
     
     // Check if client exists and belongs to the current user
-    const checkStmt = db.connection.prepare(`
-      SELECT id FROM clients WHERE id = ? AND (user_id = ? OR user_id IS NULL)
-    `);
+    const { rows } = await db.connection.query(`
+      SELECT id FROM clients WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)
+    `, [clientId, userEmail]);
     
-    const existingClient = checkStmt.get(clientId, userEmail);
-    
-    if (!existingClient) {
+    if (rows.length === 0) {
       return NextResponse.json({ error: "Client not found or you don't have permission to update it" }, { status: 404 });
     }
     
     // Update the client
-    const updateStmt = db.connection.prepare(`
+    await db.connection.query(`
       UPDATE clients
-      SET name = ?, domains = ?, emails = ?, user_id = ?, updated_at = unixepoch()
-      WHERE id = ? AND (user_id = ? OR user_id IS NULL)
-    `);
-    
-    updateStmt.run(
+      SET name = $1, domains = $2, emails = $3, user_id = $4, updated_at = NOW()
+      WHERE id = $5 AND (user_id = $6 OR user_id IS NULL)
+    `, [
       data.name,
       JSON.stringify(data.domains),
       JSON.stringify(data.emails),
       userEmail,
       clientId,
       userEmail
-    );
+    ]);
     
     return NextResponse.json({
       id: clientId,
@@ -374,23 +370,19 @@ export async function DELETE(request: Request) {
     }
     
     // Check if client exists and belongs to the current user
-    const checkStmt = db.connection.prepare(`
-      SELECT id FROM clients WHERE id = ? AND (user_id = ? OR user_id IS NULL)
-    `);
+    const { rows } = await db.connection.query(`
+      SELECT id FROM clients WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)
+    `, [clientId, userEmail]);
     
-    const existingClient = checkStmt.get(clientId, userEmail);
-    
-    if (!existingClient) {
+    if (rows.length === 0) {
       return NextResponse.json({ error: "Client not found or you don't have permission to delete it" }, { status: 404 });
     }
     
     // First, delete any associated report feedback
     try {
-      const deleteFeedbackStmt = db.connection.prepare(`
-        DELETE FROM report_feedback WHERE client_id = ?
-      `);
-      
-      deleteFeedbackStmt.run(clientId);
+      await db.connection.query(`
+        DELETE FROM report_feedback WHERE client_id = $1
+      `, [clientId]);
       console.log(`Deleted report feedback for client ${clientId}`);
     } catch (feedbackError) {
       console.error("Error deleting client feedback:", feedbackError);
@@ -398,18 +390,14 @@ export async function DELETE(request: Request) {
     }
     
     // Next, delete any associated report templates
-    const deleteTemplatesStmt = db.connection.prepare(`
-      DELETE FROM report_templates WHERE client_id = ?
-    `);
-    
-    deleteTemplatesStmt.run(clientId);
+    await db.connection.query(`
+      DELETE FROM report_templates WHERE client_id = $1
+    `, [clientId]);
     
     // Then delete the client
-    const deleteClientStmt = db.connection.prepare(`
-      DELETE FROM clients WHERE id = ? AND (user_id = ? OR user_id IS NULL)
-    `);
-    
-    deleteClientStmt.run(clientId, userEmail);
+    await db.connection.query(`
+      DELETE FROM clients WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)
+    `, [clientId, userEmail]);
     
     return NextResponse.json({ success: true });
   } catch (error) {

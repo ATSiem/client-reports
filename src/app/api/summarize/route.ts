@@ -93,11 +93,11 @@ export async function POST(request: Request) {
     
     if (data.clientId) {
       console.log('Summarize API - Fetching client details for ID:', data.clientId);
-      const stmt = db.connection.prepare(`
-        SELECT * FROM clients WHERE id = ?
-      `);
+      const { rows } = await db.connection.query(`
+        SELECT * FROM clients WHERE id = $1
+      `, [data.clientId]);
       
-      const client = stmt.get(data.clientId);
+      const client = rows[0];
       console.log('Summarize API - Client found:', !!client);
       
       if (client) {
@@ -482,19 +482,19 @@ export async function POST(request: Request) {
     if (data.saveName && data.saveName.trim() !== '' && data.clientId) {
       console.log('Summarize API - Saving template:', data.saveName);
       try {
-        const saveStmt = db.connection.prepare(`
-          INSERT INTO report_templates (id, name, format, client_id, created_at, updated_at, example_prompt)
-          VALUES (?, ?, ?, ?, unixepoch(), unixepoch(), ?)
-        `);
-        
         const templateId = crypto.randomUUID();
-        saveStmt.run(
+        
+        await db.connection.query(`
+          INSERT INTO report_templates (id, name, format, client_id, created_at, updated_at, example_prompt)
+          VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
+        `, [
           templateId, 
           data.saveName, 
           format, // Use the potentially modified format 
           data.clientId, 
           data.examplePrompt || null
-        );
+        ]);
+        
         console.log('Summarize API - Template saved with ID:', templateId);
       } catch (err) {
         console.error('Summarize API - Error saving template:', err);

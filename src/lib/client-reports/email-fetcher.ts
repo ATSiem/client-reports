@@ -209,16 +209,26 @@ async function getClientEmailsFromDatabase(params: EmailParams) {
       // Continue with empty userEmail - will fall back to old behavior
     }
     
-    // Check if cc and bcc columns exist in the database
-    const columnInfo = await db.connection.get('PRAGMA table_info(messages)');
-    const hasCcBccColumns = columnInfo.some((column: any) => column.name === 'cc') && 
-                           columnInfo.some((column: any) => column.name === 'bcc');
-    
-    console.log(`EmailFetcher - Database has cc/bcc columns: ${hasCcBccColumns}`);
-    
-    // If columns don't exist, log a warning but continue
-    if (!hasCcBccColumns) {
-      console.warn('EmailFetcher - CC and BCC columns not found in messages table. Some email filtering may be limited.');
+    // Check if cc and bcc columns exist in the database using PostgreSQL approach
+    try {
+      const { rows } = await db.connection.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'messages'
+      `);
+      const columnNames = rows.map(row => row.column_name);
+      const hasCcBccColumns = columnNames.includes('cc') && columnNames.includes('bcc');
+      
+      console.log(`EmailFetcher - Database has cc/bcc columns: ${hasCcBccColumns}`);
+      
+      // If columns don't exist, log a warning but continue
+      if (!hasCcBccColumns) {
+        console.warn('EmailFetcher - CC and BCC columns not found in messages table. Some email filtering may be limited.');
+      }
+    } catch (error) {
+      console.error('EmailFetcher - Error checking for cc/bcc columns:', error);
+      // Assume columns exist to avoid breaking functionality
+      console.log('EmailFetcher - Assuming cc/bcc columns exist');
     }
     
     // Get formatted date strings for query params
@@ -299,12 +309,14 @@ async function getClientEmailsFromDatabase(params: EmailParams) {
     
     queryParams.push(maxResults);
     
-    // Execute the raw SQL query instead of using the ORM
-    const stmt = db.connection.prepare(query);
-    const emails = stmt.all(...queryParams);
+    // Execute the raw SQL query with PostgreSQL syntax
+    const { rows } = await db.connection.query(
+      query.replace(/\?/g, (_, i) => `$${i + 1}`), // Convert ? placeholders to $1, $2, etc.
+      queryParams
+    );
     
     // Add source information to emails for weighting
-    return emails.map((email: any) => ({
+    return rows.map((email: any) => ({
       ...email,
       source: 'database'
     }));
@@ -608,11 +620,14 @@ async function getClientEmailsFromGraph(params: EmailParams) {
     try {
       console.log(`EmailFetcher - Attempting to save ${emails.length} emails to database`);
       
-      // Log database schema for debugging
+      // Log database schema for debugging (PostgreSQL version)
       try {
-        const tableInfoStmt = db.connection.prepare('PRAGMA table_info(messages)');
-        const tableInfo = tableInfoStmt.all();
-        console.log('EmailFetcher - Database schema for messages table:', tableInfo);
+        const { rows } = await db.connection.query(`
+          SELECT column_name, data_type 
+          FROM information_schema.columns 
+          WHERE table_name = 'messages'
+        `);
+        console.log('EmailFetcher - Database schema for messages table:', rows);
       } catch (schemaError) {
         console.error('EmailFetcher - Error fetching schema:', schemaError);
       }
@@ -620,36 +635,18 @@ async function getClientEmailsFromGraph(params: EmailParams) {
       const savedEmails = [];
       for (const email of emails) {
         try {
-          // Check if email already exists in database
-          const existingStmt = db.connection.prepare('SELECT id FROM messages WHERE id = ?');
-          const existing = existingStmt.get(email.id);
+          // Check if email already exists in database (PostgreSQL version)
+          const { rows } = await db.connection.query(
+            'SELECT id FROM messages WHERE id = $1',
+            [email.id]
+          );
           
-          if (!existing) {
+          if (rows.length === 0) {
             // Create columns string and values placeholders dynamically based on columns
             const columnsArr = ['id', 'subject', 'from', 'to', 'date', 'body', 'attachments', 'summary', 'labels', 'processed_for_vector'];
-            const valuesArr = ['?', '?', '?', '?', '?', '?', '?', '?', '?', '0'];
-            
-            // Add cc and bcc if they exist in the schema
-            if (hasCcBccColumns && email.cc !== undefined) {
-              columnsArr.push('cc');
-              valuesArr.push('?');
-            }
-            
-            if (hasCcBccColumns && email.bcc !== undefined) {
-              columnsArr.push('bcc');
-              valuesArr.push('?');
-            }
-            
-            // Generate column string and values placeholders
-            const columnsStr = columnsArr.map(col => `"${col}"`).join(', ');
-            const valuesStr = valuesArr.join(', ');
-            
-            // Build insert SQL
-            const insertSQL = `
-              INSERT INTO messages (
-                ${columnsStr}
-              ) VALUES (${valuesStr})
-            `;
+            let paramIndex = 1; // PostgreSQL uses $1, $2, etc.
+            let valuesArr = [`$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, 
+                           `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`];
             
             // Build params array
             const params = [
@@ -661,21 +658,36 @@ async function getClientEmailsFromGraph(params: EmailParams) {
               email.body,
               email.attachments,
               email.summary,
-              email.labels
+              email.labels,
+              false // processed_for_vector
             ];
             
             // Add cc and bcc if they exist in the schema
             if (hasCcBccColumns && email.cc !== undefined) {
+              columnsArr.push('cc');
+              valuesArr.push(`$${paramIndex++}`);
               params.push(email.cc);
             }
             
             if (hasCcBccColumns && email.bcc !== undefined) {
+              columnsArr.push('bcc');
+              valuesArr.push(`$${paramIndex++}`);
               params.push(email.bcc);
             }
             
-            // Execute insert
-            const insertStmt = db.connection.prepare(insertSQL);
-            insertStmt.run(...params);
+            // Generate column string and values placeholders
+            const columnsStr = columnsArr.map(col => `"${col}"`).join(', ');
+            const valuesStr = valuesArr.join(', ');
+            
+            // Build insert SQL for PostgreSQL
+            const insertSQL = `
+              INSERT INTO messages (
+                ${columnsStr}
+              ) VALUES (${valuesStr})
+            `;
+            
+            // Execute insert using PostgreSQL query
+            await db.connection.query(insertSQL, params);
             
             console.log(`EmailFetcher - Saved email with ID ${email.id} to database`);
             savedEmails.push(email.id);
