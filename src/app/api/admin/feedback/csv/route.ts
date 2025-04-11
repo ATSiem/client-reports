@@ -3,19 +3,6 @@ import { db } from '~/lib/db';
 
 export async function GET(request: Request) {
   try {
-    // Check for authorization header
-    const authHeader = request.headers.get('Authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Authentication required', message: 'Please sign in with your Microsoft account to access this feature' },
-        { status: 401 }
-      );
-    }
-    
-    // Token validation would typically happen here
-    // For now, we're just checking if a token exists
-    
     // Fetch feedback data
     const { rows } = await db.connection.query(`
       SELECT 
