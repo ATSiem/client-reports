@@ -3,6 +3,46 @@ import { getGraphClient } from "~/lib/auth/microsoft";
 import { findSimilarEmails } from "./email-embeddings";
 import { queueBackgroundTask } from "./background-processor";
 
+/**
+ * Get the current user's email - works in both browser and server contexts
+ */
+async function getUserEmail() {
+  try {
+    // For browser environments, use sessionStorage
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const storedEmail = sessionStorage.getItem('userEmail');
+      if (storedEmail) {
+        return storedEmail;
+      }
+    }
+    
+    // For server-side context, try to get from Graph API
+    try {
+      const client = getGraphClient();
+      if (client) {
+        const userInfo = await client.api('/me').select('mail,userPrincipalName').get();
+        const userEmail = userInfo.mail || userInfo.userPrincipalName || '';
+        
+        if (userEmail) {
+          return userEmail;
+        }
+      }
+    } catch (graphError) {
+      console.log('EmailFetcher - Could not get user email from Graph API:', graphError);
+    }
+    
+    // If we're in development mode, provide a fallback email for testing
+    if (process.env.NODE_ENV === 'development') {
+      return process.env.DEFAULT_USER_EMAIL || 'dev@example.com';
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('EmailFetcher - Error getting user email:', error);
+    return null;
+  }
+}
+
 // Parameters for email fetching
 interface EmailParams {
   startDate: string;
@@ -209,35 +249,25 @@ async function getClientEmailsFromDatabase(params: EmailParams) {
       // Continue with empty userEmail - will fall back to old behavior
     }
     
-    // Check if cc and bcc columns exist in the database using PostgreSQL approach
+    // Check if cc and bcc columns exist in the database
+    let hasCcBccColumns = false;
     try {
-      const { rows } = await db.connection.query(`
+      const tableInfoResult = await db.connection.query(`
         SELECT column_name 
         FROM information_schema.columns 
-        WHERE table_name = 'messages'
+        WHERE table_name = 'messages' AND column_name IN ('cc', 'bcc')
       `);
-      const columnNames = rows.map(row => row.column_name);
-      const hasCcBccColumns = columnNames.includes('cc') && columnNames.includes('bcc');
-      
+      hasCcBccColumns = tableInfoResult.rows.length === 2;
       console.log(`EmailFetcher - Database has cc/bcc columns: ${hasCcBccColumns}`);
-      
-      // If columns don't exist, log a warning but continue
-      if (!hasCcBccColumns) {
-        console.warn('EmailFetcher - CC and BCC columns not found in messages table. Some email filtering may be limited.');
-      }
     } catch (error) {
-      console.error('EmailFetcher - Error checking for cc/bcc columns:', error);
-      // Assume columns exist to avoid breaking functionality
-      console.log('EmailFetcher - Assuming cc/bcc columns exist');
+      console.error('EmailFetcher - Error checking table schema for cc/bcc columns:', error);
     }
     
-    // Get formatted date strings for query params
-    const startDateStr = new Date(startDate).toISOString().split('T')[0];
-    const endDateStr = new Date(endDate).toISOString().split('T')[0];
-    const queryParams = [startDateStr, endDateStr];
-    
-    // Build domain-based conditions
+    // Build SQL query conditions
     let domainConditions = '';
+    // Initialize query params array here with the date values
+    const queryParams = [startDate, endDate];
+    
     if (clientDomains.length > 0) {
       // Normalize all domains for consistent matching
       const normalizedDomains = clientDomains.map(normalizeDomain);
@@ -294,26 +324,24 @@ async function getClientEmailsFromDatabase(params: EmailParams) {
     const emailFilter = emailConditions.length > 0 ? `(${emailConditions.join(' OR ')})` : '1=1'; // Default condition that's always true
     
     // Final WHERE clause combining date range, email conditions, and domain conditions
-    const whereClause = `WHERE date >= ? AND date <= ? AND (${emailFilter}${domainConditions})`;
+    const whereClause = `WHERE date >= $1 AND date <= $2 AND (${emailFilter}${domainConditions})`;
     
     // Full query with proper ordering and limit
     const query = `
       SELECT * FROM messages 
       ${whereClause}
       ORDER BY date DESC
-      LIMIT ?
+      LIMIT $3
     `;
     
     console.log('EmailFetcher - Database query:', query);
     console.log('EmailFetcher - Database query params:', queryParams);
     
-    queryParams.push(maxResults);
+    // Add max results parameter
+    queryParams.push(maxResults.toString());
     
-    // Execute the raw SQL query with PostgreSQL syntax
-    const { rows } = await db.connection.query(
-      query.replace(/\?/g, (_, i) => `$${i + 1}`), // Convert ? placeholders to $1, $2, etc.
-      queryParams
-    );
+    // Execute the query using PostgreSQL syntax with $ parameter placeholders
+    const { rows } = await db.connection.query(query, queryParams);
     
     // Add source information to emails for weighting
     return rows.map((email: any) => ({
@@ -558,12 +586,15 @@ async function getClientEmailsFromGraph(params: EmailParams) {
       }
     }
     
-    // Check if the table has cc and bcc columns
+    // Filter by client criteria
     let hasCcBccColumns = false;
     try {
-      const tableInfo = db.connection.prepare('PRAGMA table_info(messages)').all();
-      const columnNames = tableInfo.map(col => col.name);
-      hasCcBccColumns = columnNames.includes('cc') && columnNames.includes('bcc');
+      const tableInfoResult = await db.connection.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'messages' AND column_name IN ('cc', 'bcc')
+      `);
+      hasCcBccColumns = tableInfoResult.rows.length === 2;
     } catch (error) {
       console.error('EmailFetcher - Error checking table schema for cc/bcc columns:', error);
     }
@@ -681,46 +712,24 @@ async function getClientEmailsFromGraph(params: EmailParams) {
             
             // Build insert SQL for PostgreSQL
             const insertSQL = `
-              INSERT INTO messages (
-                ${columnsStr}
-              ) VALUES (${valuesStr})
+              INSERT INTO messages (${columnsStr}) VALUES (${valuesStr})
             `;
             
-            // Execute insert using PostgreSQL query
+            // Execute the insert SQL query
             await db.connection.query(insertSQL, params);
             
-            console.log(`EmailFetcher - Saved email with ID ${email.id} to database`);
-            savedEmails.push(email.id);
-          } else {
-            console.log(`EmailFetcher - Email ${email.id} already exists in database`);
+            savedEmails.push(email);
           }
-        } catch (singleEmailError) {
-          console.error(`EmailFetcher - Error saving email ${email.id}:`, singleEmailError);
-          console.error(`EmailFetcher - Email data:`, JSON.stringify({
-            id: email.id,
-            subject: email.subject,
-            from: email.from,
-            to: email.to,
-            date: email.date?.substring(0, 30) + '...',
-          }));
+        } catch (error) {
+          console.error('EmailFetcher - Error saving email to database:', error);
         }
       }
       
-      if (savedEmails.length > 0) {
-        console.log(`EmailFetcher - Saved ${savedEmails.length} new emails to database`);
-        // Queue background processing for these specific emails
-        queueBackgroundTask('process_new_emails', { 
-          emailIds: savedEmails,
-          priority: 'high'
-        });
-      } else {
-        console.log('EmailFetcher - No new emails to save to database');
-      }
-    } catch (dbError) {
-      console.error('EmailFetcher - Error saving emails to database:', dbError);
+      return savedEmails;
+    } catch (error) {
+      console.error('EmailFetcher - Error saving emails to database:', error);
+      return [];
     }
-    
-    return emails;
   } catch (error) {
     console.error('EmailFetcher - Error getting emails from Graph API:', error);
     return [];

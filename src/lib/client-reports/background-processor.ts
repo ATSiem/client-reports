@@ -134,14 +134,14 @@ async function processPendingSummaries(limit = 20) {
     console.log('BackgroundProcessor - Processing pending summaries');
     
     // Find emails that need summaries (where summary is empty or null)
-    const stmt = db.connection.prepare(`
+    const emailsResult = await db.connection.query(`
       SELECT id, subject, "from", "to", date, body
       FROM messages
       WHERE summary IS NULL OR summary = ''
-      LIMIT ?
-    `);
+      LIMIT $1
+    `, [limit]);
     
-    const emails = stmt.all(limit);
+    const emails = emailsResult.rows;
     console.log(`BackgroundProcessor - Found ${emails.length} emails needing summaries`);
     
     if (emails.length === 0) {
@@ -156,13 +156,11 @@ async function processPendingSummaries(limit = 20) {
         const summary = await generateEmailSummary(email);
         
         if (summary) {
-          const updateStmt = db.connection.prepare(`
+          await db.connection.query(`
             UPDATE messages
-            SET summary = ?, updated_at = unixepoch()
-            WHERE id = ?
-          `);
-          
-          updateStmt.run(summary, email.id);
+            SET summary = $1, updated_at = NOW()
+            WHERE id = $2
+          `, [summary, email.id]);
           processedCount++;
         }
       } catch (err) {
@@ -197,26 +195,22 @@ async function processNewEmails(limit = 20, emailIds?: string[]) {
       for (const emailId of emailIds) {
         try {
           // Check if the email needs a summary
-          const emailStmt = db.connection.prepare(`
+          const email = await db.connection.query(`
             SELECT id, subject, "from", "to", date, body
             FROM messages
-            WHERE id = ? AND (summary IS NULL OR summary = '')
-          `);
-          
-          const email = emailStmt.get(emailId);
+            WHERE id = $1 AND (summary IS NULL OR summary = '')
+          `, [emailId]).then(result => result.rows[0]);
           
           if (email) {
             // Generate and save summary
             const summary = await generateEmailSummary(email);
             
             if (summary) {
-              const updateStmt = db.connection.prepare(`
+              await db.connection.query(`
                 UPDATE messages
-                SET summary = ?, updated_at = unixepoch()
-                WHERE id = ?
-              `);
-              
-              updateStmt.run(summary, emailId);
+                SET summary = $1, updated_at = NOW()
+                WHERE id = $2
+              `, [summary, emailId]);
               console.log(`BackgroundProcessor - Generated summary for email ${emailId}`);
             }
           }
