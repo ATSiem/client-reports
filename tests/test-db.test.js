@@ -1,53 +1,74 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+// PostgreSQL database connection tests
+const { Pool } = require('pg');
+require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development' });
 
-// Set the database path explicitly
-const DB_PATH = path.resolve('./data/email_agent.db');
+// Get database connection string (for diagnostic purposes only)
+const DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/email_agent';
 
 describe('Database Connection Tests', () => {
-  let sqlite;
+  let pool;
   
-  beforeAll(() => {
-    console.log('Testing database connection...');
-    console.log('Database path:', DB_PATH);
-    console.log('Database file exists:', fs.existsSync(DB_PATH));
+  beforeAll(async () => {
+    console.log('Testing PostgreSQL database connection...');
+    console.log('Database URL:', DATABASE_URL.replace(/(:.*@)/, ':****@'));
+    
+    // Create a connection pool
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+    });
   });
   
-  afterAll(() => {
-    if (sqlite) {
-      sqlite.close();
-      console.log('Database connection closed');
+  afterAll(async () => {
+    if (pool) {
+      await pool.end();
+      console.log('Database connection pool closed');
     }
   });
   
-  test('database file exists', () => {
-    expect(fs.existsSync(DB_PATH)).toBe(true);
+  test('can connect to database', async () => {
+    // Basic connection test
+    const result = await pool.query('SELECT 1 as connected');
+    expect(result.rows[0].connected).toBe(1);
   });
   
-  test('can connect to database', () => {
-    sqlite = new Database(DB_PATH);
-    expect(sqlite).toBeDefined();
-    console.log('Database connection created successfully');
-  });
-  
-  test('database has required tables', () => {
-    const tables = sqlite.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all();
-    const tableNames = tables.map(t => t.name);
-    console.log('Tables in database:', tableNames);
+  test('database has required tables', async () => {
+    // Check if required tables exist
+    const result = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+        AND table_name IN ('clients', 'messages', 'report_templates', 'report_feedback')
+    `);
     
+    const tableNames = result.rows.map(row => row.table_name);
+    
+    // Check for required tables
     expect(tableNames).toContain('clients');
     expect(tableNames).toContain('messages');
+    expect(tableNames).toContain('report_templates');
+    expect(tableNames).toContain('report_feedback');
   });
   
-  test('can query clients table', () => {
-    const clients = sqlite.prepare('SELECT * FROM clients').all();
-    console.log('Clients table has', clients.length, 'records');
+  test('can query clients table', async () => {
+    // Test query on clients table
+    const result = await pool.query('SELECT COUNT(*) as count FROM clients');
     
-    if (clients.length > 0) {
-      console.log('First client:', clients[0]);
-    }
+    // Convert PostgreSQL count string to number
+    const count = parseInt(result.rows[0].count, 10);
     
-    expect(clients).toBeDefined();
+    // Just verify we can query the table
+    expect(count).toBeGreaterThanOrEqual(0);
+  });
+  
+  test('client schema includes user_id column', async () => {
+    // Check if user_id column exists in clients table
+    const result = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'clients' AND column_name = 'user_id'
+    `);
+    
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0].column_name).toBe('user_id');
   });
 }); 
