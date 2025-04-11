@@ -26,7 +26,8 @@ const ADMIN_API_PATHS = [
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
 // Function to check if email is an admin
-function isAdminEmail(email: string | null): boolean {
+// Exported for testing purposes only
+export function isAdminEmail(email: string | null): boolean {
   if (!email) return false;
   
   // Normalize the input email - remove all whitespace and go lowercase
@@ -35,23 +36,16 @@ function isAdminEmail(email: string | null): boolean {
   // Get admin emails from environment variable or use empty array
   const adminEmailsRaw = env.ADMIN_EMAILS || '';
   
-  // More detailed debugging for raw string
-  console.log('Raw admin emails string:', adminEmailsRaw);
-  console.log('Raw admin emails char codes:', Array.from(adminEmailsRaw).map(c => c.charCodeAt(0)));
-  
   // Split and normalize carefully 
   const adminEmails = adminEmailsRaw
     .split(',')
     .map(e => e.trim().toLowerCase())
     .filter(e => e.length > 0);
   
-  console.log('Admin emails from env:', adminEmails);
-  console.log('Checking if email is admin:', normalizedEmail);
-  
   // Try multiple approaches to check if email is in admin list
-  // 1. Compare by component parts (local part and domain separately)
   let isAdmin = false;
   
+  // 1. Compare by component parts (local part and domain separately)
   if (normalizedEmail.includes('@')) {
     const [inputLocalPart, inputDomain] = normalizedEmail.split('@');
     
@@ -65,48 +59,24 @@ function isAdminEmail(email: string | null): boolean {
         const domainMatch = adminDomain.toLowerCase() === inputDomain.toLowerCase();
         
         if (localPartMatch && domainMatch) {
-          console.log('Admin match found by parts comparison:', adminEmail);
           isAdmin = true;
         }
       }
     });
   }
   
-  // 2. Direct includes check with extra debug info (simpler approach)
+  // 2. Direct comparison (simpler approach)
   if (!isAdmin) {
     adminEmails.forEach(adminEmail => {
       if (adminEmail === normalizedEmail) {
-        console.log('Admin match found by direct comparison');
         isAdmin = true;
       }
     });
   }
   
-  // Add more detailed logging
-  if (!isAdmin) {
-    console.log('Admin access check failed for', normalizedEmail);
-    console.log('Admin emails length:', adminEmails.length);
-    console.log('Admin emails exact values:', JSON.stringify(adminEmails));
-    
-    // Debug each comparison approach
-    adminEmails.forEach((adminEmail, i) => {
-      console.log(`Comparison with ${adminEmail}:`, {
-        exactMatch: adminEmail === normalizedEmail,
-        charCodesInput: Array.from(normalizedEmail).map(c => c.charCodeAt(0)),
-        charCodesAdmin: Array.from(adminEmail).map(c => c.charCodeAt(0)),
-        equality: Array.from(adminEmail).map((c, i) => 
-          i < normalizedEmail.length 
-            ? {pos: i, adminChar: c, inputChar: normalizedEmail[i], equal: c === normalizedEmail[i]} 
-            : {pos: i, adminChar: c, inputChar: 'missing', equal: false}
-        )
-      });
-    });
-  } else {
-    console.log('Admin access granted for', normalizedEmail);
-  }
-  
   // In development mode, use the dev bypass if enabled
-  if (!isAdmin && isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
+  // Explicitly check that we're not in production mode
+  if (!isAdmin && isDevelopment && process.env.NODE_ENV !== 'production' && process.env.DEV_ADMIN_BYPASS === 'true') {
     console.log('Development bypass enabled, granting admin access');
     return true;
   }
@@ -118,12 +88,8 @@ function isAdminEmail(email: string | null): boolean {
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   
-  console.log(`Middleware processing path: ${path}`);
-  
   // Only check authentication for API routes that need protection
   if (PROTECTED_API_PATHS.some(prefix => path.startsWith(prefix))) {
-    console.log('Path requires authentication');
-    
     // Check for Authorization header
     const authHeader = request.headers.get('Authorization');
     let accessToken = authHeader ? authHeader.replace('Bearer ', '') : null;
@@ -133,16 +99,12 @@ export function middleware(request: NextRequest) {
       const msTokenHeader = request.headers.get('X-MS-TOKEN');
       if (msTokenHeader) {
         accessToken = msTokenHeader;
-        console.log('Got access token from X-MS-TOKEN header');
       }
-    } else {
-      console.log('Got access token from Authorization header');
     }
     
     // If still no token, try to get from server-side session
     if (!accessToken) {
       accessToken = getUserAccessToken();
-      console.log('Got access token from server-side session:', !!accessToken);
     }
     
     // Check cookies as a last resort
@@ -151,13 +113,11 @@ export function middleware(request: NextRequest) {
       const msGraphToken = cookies.get('msGraphToken');
       if (msGraphToken) {
         accessToken = msGraphToken.value;
-        console.log('Got access token from cookies');
       }
     }
     
     // If no token found, user is not authenticated
     if (!accessToken) {
-      console.log('No access token found, returning 401');
       return NextResponse.json(
         { 
           error: "Authentication required",
@@ -177,24 +137,19 @@ export function middleware(request: NextRequest) {
       userEmail = userEmail.toLowerCase();
     }
     
-    console.log('User email from request headers:', userEmail);
-    
     // Check if the user's email domain is allowed
     if (userEmail) {
       const emailDomain = userEmail.split('@')[1]?.toLowerCase();
-      console.log('Email domain:', emailDomain, 'Allowed domain:', env.ALLOWED_EMAIL_DOMAIN);
       
       // Skip domain validation in development mode if configured
       if (isDevelopment && !env.ALLOWED_EMAIL_DOMAIN) {
-        console.log('Development mode: skipping domain validation');
+        // Development mode: skip domain validation
       } else {
         // Check if the email domain is in the allowed list
         // ALLOWED_EMAIL_DOMAIN can be a comma-separated list of domains
         const allowedDomains = env.ALLOWED_EMAIL_DOMAIN?.split(',').map(d => d.trim().toLowerCase()) || [];
-        console.log('Allowed domains:', allowedDomains);
         
         if (!allowedDomains.includes(emailDomain)) {
-          console.log('Domain not allowed, returning 403');
           return NextResponse.json(
             {
               error: "Access denied",
@@ -207,21 +162,17 @@ export function middleware(request: NextRequest) {
       
       // Check admin access for admin paths
       if (ADMIN_API_PATHS.some(prefix => path.startsWith(prefix))) {
-        console.log('Path requires admin access, checking if user is admin');
-        
         // Special case for the admin check endpoint itself to avoid circular dependencies
         const isAdminCheckEndpoint = path === '/api/admin/check' || 
                                      path.startsWith('/api/system/debug/');
         
         if (isAdminCheckEndpoint) {
-          console.log('Admin check or debug endpoint detected - allowing access for diagnostics');
+          // Allow access for diagnostics
         }
         // In development mode with DEV_ADMIN_BYPASS=true, allow access for testing
         else if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
-          console.log('Development mode with DEV_ADMIN_BYPASS: Granting admin access');
-          console.log('Admin access granted via dev bypass');
+          // Admin access granted via dev bypass
         } else if (!isAdminEmail(userEmail)) {
-          console.log('User is not an admin, returning 403');
           return NextResponse.json(
             {
               error: "Access denied",
@@ -230,13 +181,10 @@ export function middleware(request: NextRequest) {
             { status: 403 }
           );
         }
-        console.log('Admin access granted');
       }
     } else {
-      console.log('No user email in request headers');
       // In development, we might want to allow requests without email headers
       if (!isDevelopment) {
-        console.log('Production mode: rejecting request without email header');
         return NextResponse.json(
           {
             error: "Access denied",
@@ -247,9 +195,6 @@ export function middleware(request: NextRequest) {
       }
     }
   }
-  
-  // Allow the request to continue
-  console.log('Request allowed to continue');
   
   // Forward the request with the current headers
   const response = NextResponse.next();

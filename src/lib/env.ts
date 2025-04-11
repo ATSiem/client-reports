@@ -72,7 +72,12 @@ const envSchema = z.object({
 // Process env variables through schema validation
 // This will throw an error if required variables are missing
 function getEnvVariables() {
-  // For development purposes, make ALLOWED_EMAIL_DOMAIN optional in all environments
+  // In production, validate all required fields
+  if (process.env.NODE_ENV === 'production') {
+    return envSchema.parse(process.env);
+  } 
+  
+  // For development purposes, make all variables optional
   return envSchema.partial().parse(process.env);
 }
 

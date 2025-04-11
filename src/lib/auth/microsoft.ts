@@ -62,7 +62,11 @@ export const loginScopes = [
 export function setUserAccessToken(token: string | null) {
   userAccessToken = token;
   saveTokenToStorage(token);
-  console.log('Token saved to storage:', token ? token.substring(0, 10) + '...' : 'null');
+  
+  // Safe logging that doesn't expose token contents
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Token saved to storage:', token ? '[REDACTED]' : 'null');
+  }
 }
 
 // Function to get the user's access token
@@ -82,7 +86,7 @@ export function getUserAccessToken() {
     if (userAccessToken) {
       saveTokenToStorage(userAccessToken);
     }
-  } else {
+  } else if (process.env.NODE_ENV !== 'production') {
     // Running on server side - can only use in-memory token
     console.log('getUserAccessToken called on server side');
   }
@@ -96,35 +100,41 @@ export function getGraphClient() {
     throw new Error('User not authenticated');
   }
 
-  console.log('Creating Graph client with token:', userAccessToken.substring(0, 10) + '...');
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Creating Graph client with token: [REDACTED]');
+  }
 
   // Initialize the Graph client with the user's access token
   return Client.init({
     authProvider: (done) => {
       done(null, userAccessToken);
     },
-    debugLogging: true,
+    debugLogging: process.env.NODE_ENV !== 'production',
     // Enhanced middleware to log all requests and responses
     middlewares: [
       {
         // Log all requests
         execute: async (context, next) => {
+          // Only log in non-production environments
+          const shouldLog = process.env.NODE_ENV !== 'production';
           const { options } = context;
           
-          console.log(`Graph API Request - ${new Date().toISOString()}`);
-          console.log(`  URL: ${options.method} ${options.url}`);
-          
-          if (options.headers) {
-            // Log headers except Authorization which contains the token
-            const filteredHeaders = { ...options.headers };
-            if (filteredHeaders.Authorization) {
-              filteredHeaders.Authorization = filteredHeaders.Authorization.substring(0, 15) + '...';
+          if (shouldLog) {
+            console.log(`Graph API Request - ${new Date().toISOString()}`);
+            console.log(`  URL: ${options.method} ${options.url}`);
+            
+            if (options.headers) {
+              // Log headers except Authorization which contains the token
+              const filteredHeaders = { ...options.headers };
+              if (filteredHeaders.Authorization) {
+                filteredHeaders.Authorization = '[REDACTED]';
+              }
+              console.log(`  Headers: ${JSON.stringify(filteredHeaders)}`);
             }
-            console.log(`  Headers: ${JSON.stringify(filteredHeaders)}`);
-          }
-          
-          if (options.body) {
-            console.log(`  Request Body: ${JSON.stringify(options.body)}`);
+            
+            if (options.body) {
+              console.log(`  Request Body: ${JSON.stringify(options.body)}`);
+            }
           }
           
           try {
@@ -132,38 +142,55 @@ export function getGraphClient() {
             await next();
             
             // Log the response
-            console.log(`Graph API Response - ${new Date().toISOString()}`);
-            console.log(`  Status: ${context.response.status}`);
-            
-            // For debugging, log a sample of the response data
-            if (context.response.ok) {
-              try {
-                const responseClone = context.response.clone();
-                const responseBody = await responseClone.json();
-                
-                // Don't log the entire response for large datasets
-                if (responseBody && responseBody.value && Array.isArray(responseBody.value)) {
-                  console.log(`  Response: Array with ${responseBody.value.length} items`);
+            if (shouldLog) {
+              console.log(`Graph API Response - ${new Date().toISOString()}`);
+              console.log(`  Status: ${context.response.status}`);
+              
+              // For debugging, log a sample of the response data
+              if (context.response.ok) {
+                try {
+                  const responseClone = context.response.clone();
+                  const responseBody = await responseClone.json();
                   
-                  // Log a preview of the first few items
-                  if (responseBody.value.length > 0) {
-                    const sampleSize = Math.min(2, responseBody.value.length);
-                    const sample = responseBody.value.slice(0, sampleSize);
-                    console.log(`  Sample items: ${JSON.stringify(sample)}`);
+                  // Don't log the entire response for large datasets
+                  if (responseBody && responseBody.value && Array.isArray(responseBody.value)) {
+                    console.log(`  Response: Array with ${responseBody.value.length} items`);
+                    
+                    // Log a preview of the first few items - sanitize any email addresses
+                    if (responseBody.value.length > 0) {
+                      const sampleSize = Math.min(2, responseBody.value.length);
+                      const sample = responseBody.value.slice(0, sampleSize).map(item => {
+                        // Sanitize email addresses in sample data
+                        const sanitized = { ...item };
+                        if (sanitized.from && sanitized.from.emailAddress) {
+                          sanitized.from.emailAddress.address = '[REDACTED EMAIL]';
+                        }
+                        if (sanitized.sender && sanitized.sender.emailAddress) {
+                          sanitized.sender.emailAddress.address = '[REDACTED EMAIL]';
+                        }
+                        return sanitized;
+                      });
+                      console.log(`  Sample items: ${JSON.stringify(sample)}`);
+                    }
+                  } else {
+                    // For smaller responses, log more details but sanitize sensitive data
+                    const sanitizedResponse = JSON.stringify(responseBody)
+                      .replace(/"email":\s*"[^"]+"/g, '"email": "[REDACTED]"')
+                      .replace(/"address":\s*"[^"]+@[^"]+"/g, '"address": "[REDACTED EMAIL]"');
+                    const responsePreview = sanitizedResponse.substring(0, 500);
+                    console.log(`  Response preview: ${responsePreview}${responsePreview.length >= 500 ? '...' : ''}`);
                   }
-                } else {
-                  // For smaller responses, log more details
-                  const responsePreview = JSON.stringify(responseBody).substring(0, 500);
-                  console.log(`  Response preview: ${responsePreview}${responsePreview.length >= 500 ? '...' : ''}`);
+                } catch (e) {
+                  console.log(`  Error parsing response for logging: ${e.message || e}`);
                 }
-              } catch (e) {
-                console.log(`  Error parsing response for logging: ${e.message || e}`);
               }
             }
           } catch (error) {
-            console.log(`Graph API Error - ${new Date().toISOString()}`);
-            console.log(`  Status: ${error.statusCode}`);
-            console.log(`  Message: ${error.message}`);
+            if (shouldLog) {
+              console.log(`Graph API Error - ${new Date().toISOString()}`);
+              console.log(`  Status: ${error.statusCode}`);
+              console.log(`  Message: ${error.message}`);
+            }
             throw error;
           }
         }
