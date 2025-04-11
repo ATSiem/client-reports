@@ -1,32 +1,82 @@
-# Client Reports
-## Preparing for Prod Deployment
+# Client Reports - Production Deployment Plan
+## Overview
 
-- Setup .env.development for dev (npm run dev) and .env.production for prod (docker compose build)
-  - verify Dockerfile functions for next.js app and SQLite file
-  - verify docker-compose.yml builds for next.js app and PostgreSQL database
+The Client Reports application is being migrated from SQLite to PostgreSQL for better scalability and vector search capabilities. This document outlines the steps required for deployment to the production environment on the Mac mini.
 
-- Setup PostgreSQL for dev and prod
-  - set DATABASE_TYPE to 'postgres' and verify DATABASE_URL is set in .env files
-  - leverage current config of Drizzle ORM
-  - leverage pgloader to migrate SQLite data to test PostgreSQL database
-  - verify test suite functions with PostgreSQL
-  - ensure the test db is wiped each time the test suite runs
+## Completed Tasks
 
-- Enable AI Search with pgvector on PostgreSQL
-  - install the pgvector extension in the PostgreSQL database
-  - update Drizzle ORM or query logic to leverage pgvector
-  - verify query and ranking mechanism
+- ✅ Setup .env.development for dev (npm run dev) and .env.production for prod (docker compose build)
+- ✅ Configured Dockerfile for Next.js app with PostgreSQL support
+- ✅ Created docker-compose.yml that builds both the Next.js app and PostgreSQL database
+- ✅ Set DATABASE_TYPE to 'postgres' and added proper DATABASE_URL in env files
+- ✅ Configured Drizzle ORM for PostgreSQL compatibility
+- ✅ Created schema migration script to set up PostgreSQL tables
+- ✅ Added pgvector extension for AI search capabilities
+- ✅ Fixed SQL syntax for PostgreSQL compatibility (quoted reserved keywords)
 
-- merge `postgres-migration` branch to main
-  - git checkout main
-  - git merge --strategy=ours main
-  - git checkout main
-  - git reset --hard postgres-migration
-  - git push origin main --force
+## Deployment Instructions for Mac Mini
 
-- deploy to prod on Mac mini via docker compose build
+1. **Clone and Configure Repository**
+   ```bash
+   git clone [repository-url] client-reports
+   cd client-reports
+   git checkout postgres-migration
+   ```
 
-- setup comms.solutioncenter.ai as prod URL
-  - create an A record to point comms.solutioncenter.ai to the prod server's IP address 192.168.10.39
-  - configure Caddy to handle requests for comms.solutioncenter.ai and route them to 192.168.10.39:3000
-  - verify SSL is setup
+2. **Setup Environment Variables**
+   ```bash
+   cp .env.example .env.production
+   ```
+   
+   Edit `.env.production` to include:
+   ```
+   DATABASE_TYPE=postgres
+   DATABASE_URL=postgres://postgres:postgres@db:5432/email_agent
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=postgres
+   POSTGRES_DB=email_agent
+   NEXT_PUBLIC_AZURE_REDIRECT_URI=https://comms.solutioncenter.ai/api/auth/callback
+   ```
+
+3. **Build and Deploy Application**
+   ```bash
+   docker compose down -v
+   docker compose build
+   docker compose up -d
+   ```
+
+4. **Configure Caddy**
+   Add to Caddyfile:
+   ```
+   comms.solutioncenter.ai {
+       reverse_proxy localhost:3000
+   }
+   ```
+   
+   Restart Caddy:
+   ```bash
+   sudo systemctl restart caddy
+   ```
+
+5. **Verify Deployment**
+   - Confirm application runs at https://comms.solutioncenter.ai
+   - Verify login with Azure AD
+   - Test report generation functionality
+
+## DNS Configuration
+- Create an A record pointing comms.solutioncenter.ai to 192.168.10.39
+- Verify SSL certificate is properly provisioned by Caddy
+
+## Troubleshooting
+
+If the application fails to start:
+1. Check Docker logs: `docker compose logs app`
+2. Verify database connection: `docker compose logs db`
+3. Ensure all environment variables are correctly set
+4. Look for PostgreSQL syntax errors in server logs
+
+## Data Migration (If Needed)
+Instructions for migrating existing SQLite data to PostgreSQL using pgloader:
+```bash
+pgloader sqlite:///path/to/data.db postgresql://postgres:postgres@localhost:5432/email_agent
+```

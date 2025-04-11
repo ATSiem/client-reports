@@ -74,39 +74,40 @@ export async function GET(request: Request) {
     if (clientId) {
       console.log('Clients API - Fetching single client:', clientId);
       // Fetch a single client, ensuring it belongs to the current user
-      const stmt = db.connection.prepare(`
-        SELECT * FROM clients WHERE id = ? AND (user_id = ? OR user_id IS NULL)
-      `);
+      const { rows } = await db.connection.query(
+        `SELECT * FROM clients WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`,
+        [clientId, userEmail]
+      );
       
-      const client = stmt.get(clientId, userEmail);
-      
-      if (!client) {
+      if (rows.length === 0) {
         console.log('Clients API - Client not found or does not belong to user');
         return NextResponse.json({ error: "Client not found" }, { status: 404 });
       }
+      
+      const client = rows[0];
       
       console.log('Clients API - Client found, returning data');
       // Parse JSON strings back to arrays
       return NextResponse.json({
         ...client,
-        domains: JSON.parse(client.domains),
-        emails: JSON.parse(client.emails),
+        domains: typeof client.domains === 'string' ? JSON.parse(client.domains) : client.domains,
+        emails: typeof client.emails === 'string' ? JSON.parse(client.emails) : client.emails,
       });
     } else {
       console.log('Clients API - Fetching all clients for user:', userEmail);
       // Fetch all clients for the current user, including those without a user_id (for backward compatibility)
-      const stmt = db.connection.prepare(`
-        SELECT * FROM clients WHERE user_id = ? OR user_id IS NULL ORDER BY name ASC
-      `);
-      
-      const clients = stmt.all(userEmail);
+      // Using parameterized query for PostgreSQL
+      const { rows: clients } = await db.connection.query(
+        'SELECT * FROM clients WHERE user_id = $1 OR user_id IS NULL ORDER BY name ASC',
+        [userEmail]
+      );
       console.log('Clients API - Found', clients.length, 'clients for user');
       
       // Parse JSON strings back to arrays for each client
       const formattedClients = clients.map(client => ({
         ...client,
-        domains: JSON.parse(client.domains),
-        emails: JSON.parse(client.emails),
+        domains: typeof client.domains === 'string' ? JSON.parse(client.domains) : client.domains,
+        emails: typeof client.emails === 'string' ? JSON.parse(client.emails) : client.emails,
       }));
       
       console.log('Clients API - Returning formatted clients');
@@ -174,18 +175,17 @@ export async function POST(request: Request) {
     // Generate a new client ID
     const clientId = crypto.randomUUID();
     
-    // Insert the new client with the user ID
-    const stmt = db.connection.prepare(`
-      INSERT INTO clients (id, name, domains, emails, user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, unixepoch(), unixepoch())
-    `);
-    
-    stmt.run(
-      clientId,
-      data.name,
-      JSON.stringify(data.domains),
-      JSON.stringify(data.emails),
-      userEmail
+    // Insert the new client with the user ID - PostgreSQL version
+    await db.connection.query(
+      `INSERT INTO clients (id, name, domains, emails, user_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+      [
+        clientId,
+        data.name,
+        JSON.stringify(data.domains),
+        JSON.stringify(data.emails),
+        userEmail
+      ]
     );
     
     return NextResponse.json({

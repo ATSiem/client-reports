@@ -1,5 +1,7 @@
 // Database initialization script
 const { Pool } = require('pg');
+const { execSync } = require('child_process');
+const path = require('path');
 require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development' });
 
 console.log('Initializing PostgreSQL database...');
@@ -39,7 +41,20 @@ async function initializeDatabase() {
     const existingTables = tablesExistResult.rows.map(row => row.table_name);
     console.log('Existing tables:', existingTables);
 
-    // Tables will be created by Drizzle migrations, so we don't need to create them here
+    // Run Drizzle migrations to create missing tables
+    if (existingTables.length < 4) {
+      console.log('Tables missing, running Drizzle schema migrations...');
+      try {
+        // Run the migration script
+        const migrationScriptPath = path.join(__dirname, 'run-drizzle-migrations.js');
+        require(migrationScriptPath);
+        console.log('Schema migrations initiated');
+      } catch (migrationError) {
+        console.error('Error running schema migrations:', migrationError);
+      }
+    } else {
+      console.log('All tables exist, skipping schema migrations');
+    }
     
     // Close the pool
     await pool.end();
