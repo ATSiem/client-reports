@@ -4,33 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 - `npm run dev`: Run development server with Turbopack
-- `docker compose build`: Build production version
+- `docker compose build`: Build and deploy production version
 
 ## Database Commands
 - `npm run db:init`: Initialize database
 - `npm run db:generate`: Generate Drizzle migrations
 - `npm run db:migrate`: Run migrations
 
-## Deployment Commands
-- `docker compose build` for production deployment
-
 ## Environment Configuration
 - Use `.env.development` for dev (npm run dev)
 - Use `.env.production` for prod (docker compose build)
-- Set `DATABASE_TYPE` to 'postgres' and verify `DATABASE_URL` is set correctly
 
 ## Database Configuration
-- Use PostgreSQL for both dev and prod
-- Use pgvector extension in PostgreSQL for AI Search capabilities
-- Use pgloader to migrate SQLite data to PostgreSQL
-- Eliminate SQLite from the project
+- Use PostgreSQL for all database operations
+- Include pgvector for vector search functionality (AI Search)
+- Eliminate any reference to SQLite, even in development environments
 
 ## Test Commands
 - `npm test`: Run all tests
-- `npm run test:watch`: Run tests in watch mode
-- `npm run test:api`: Run only API tests
-- `npm run test:summarizer`: Run only summarizer tests
-- Run single test: `jest tests/path-to-test.test.js`
 
 ## Code Style Guidelines
 - TypeScript with `strict: false` in tsconfig
@@ -42,3 +33,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Commit migrations using Drizzle ORM pattern
 - Handle errors with proper logging and user feedback
 - Follow Zod schema patterns for data validation
+- Use Drizzle ORM with type-safe queries and relationships
+- Organize code by features/domains with clear module boundaries
+- Prioritize React Server Components where possible
+- Use React Context for global state management
+- Implement React Query for server state and data fetching
+- Follow REST conventions for API endpoints
+- Document public functions and components with JSDoc
+- Ensure WCAG 2.1 AA compliance for all user interfaces
+- Implement lazy loading and code splitting for performance
+- Maintain consistent error handling patterns across API routes
+- Design components for reusability and composition
+- Apply semantic versioning for package dependencies
