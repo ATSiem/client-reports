@@ -6,7 +6,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "predev": "./ensure-node-version.sh",
+    "predev": "./ensure-node-version.sh && node scripts/dev-postgres.js",
     "dev": "next dev --turbopack",
     "prebuild": "./ensure-node-version.sh",
     "build": "next build",
