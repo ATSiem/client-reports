@@ -16,34 +16,32 @@ export async function GET(request: Request) {
     // Token validation would typically happen here
     // For now, we're just checking if a token exists
     
-    // Fetch all feedback data with client names (no limit)
-    const stmt = db.connection.prepare(`
+    // Fetch feedback data
+    const { rows } = await db.connection.query(`
       SELECT 
         rf.id, 
-        rf.report_id as reportId,
-        rf.client_id as clientId,
-        c.name as clientName,
+        rf.report_id as "reportId",
+        rf.client_id as "clientId",
+        c.name as "clientName",
         rf.rating,
-        rf.feedback_text as feedbackText,
-        rf.actions_taken as actionsTaken,
-        rf.start_date as startDate,
-        rf.end_date as endDate,
-        rf.vector_search_used as vectorSearchUsed,
-        rf.search_query as searchQuery,
-        rf.email_count as emailCount,
-        rf.copied_to_clipboard as copiedToClipboard,
-        rf.generation_time_ms as generationTimeMs,
-        rf.created_at as createdAt,
-        rf.user_agent as userAgent
+        rf.feedback_text as "feedbackText",
+        rf.actions_taken as "actionsTaken",
+        rf.start_date as "startDate",
+        rf.end_date as "endDate",
+        rf.vector_search_used as "vectorSearchUsed",
+        rf.search_query as "searchQuery",
+        rf.email_count as "emailCount",
+        rf.copied_to_clipboard as "copiedToClipboard",
+        rf.generation_time_ms as "generationTimeMs",
+        rf.created_at as "createdAt",
+        rf.user_agent as "userAgent"
       FROM report_feedback rf
       LEFT JOIN clients c ON rf.client_id = c.id
       ORDER BY rf.created_at DESC
     `);
     
-    const feedbackRows = stmt.all();
-    
     // Process the data
-    const feedback = feedbackRows.map(row => ({
+    const feedback = rows.map(row => ({
       ...row,
       vectorSearchUsed: row.vectorSearchUsed === 1 ? 'Yes' : 'No',
       copiedToClipboard: row.copiedToClipboard === 1 ? 'Yes' : 'No',

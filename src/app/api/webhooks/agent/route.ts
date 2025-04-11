@@ -48,29 +48,62 @@ export async function POST(request: Request) {
       )}. The summary should be a 1-2 sentences and only generate 1-2 labels that are relevant to the email.`,
     });
 
-    await db
-      .insert(messages)
-      .values({
-        id: validatedData.id,
-        subject: validatedData.subject,
-        from: validatedData.from,
-        to: validatedData.to,
-        body: validatedData.body,
-        attachments: JSON.stringify(validatedData.attachments),
-        summary: result.object.summary,
-        labels: JSON.stringify(result.object.labels), // Store as JSON string for SQLite
-        date: validatedData.date,
-      })
-      .onConflictDoNothing({ target: messages.id });
+    // Store the webhook data in the database
+    try {
+      // Set variables
+      const id = result.object.message_id;
+      const subject = result.object.subject || "(No Subject)";
+      const from = result.object.from_email || "";
+      const to = result.object.to_email || "";
+      const date = new Date().toISOString(); // Use current date if not provided
+      const body = result.object.body || "";
+      const attachments = JSON.stringify(result.object.attachments || []);
+      const summary = result.object.summary || "";
+      const labels = JSON.stringify(result.object.labels || []);
+      const cc = result.object.cc || "";
+      const bcc = result.object.bcc || "";
+      
+      // Insert into database
+      await db.connection.query(`
+        INSERT INTO messages (
+          id, subject, "from", "to", date, body, attachments, 
+          created_at, updated_at, summary, labels, cc, bcc
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, 
+          NOW(), NOW(), $8, $9, $10, $11
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          subject = $2,
+          "from" = $3,
+          "to" = $4,
+          date = $5,
+          body = $6,
+          attachments = $7,
+          updated_at = NOW(),
+          summary = $8,
+          labels = $9,
+          cc = $10,
+          bcc = $11
+      `, [
+        id, subject, from, to, date, body, attachments,
+        summary, labels, cc, bcc
+      ]);
 
-    return NextResponse.json({
-      status: "success",
-      data: {
-        email: validatedData,
-        summary: result.object.summary,
-        labels: result.object.labels,
-      },
-    });
+      return NextResponse.json({
+        status: "success",
+        data: {
+          email: validatedData,
+          summary: result.object.summary,
+          labels: result.object.labels,
+        },
+      });
+    } catch (error) {
+      console.error("Database insertion error:", error);
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 },
+      );
+    }
   } catch (error) {
     console.error("Webhook processing error:", error);
     return NextResponse.json(

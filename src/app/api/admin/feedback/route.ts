@@ -16,90 +16,59 @@ export async function GET(request: Request) {
     // Token validation would typically happen here
     // For now, we're just checking if a token exists
     
-    // Fetch feedback data with client names
-    const stmt = db.connection.prepare(`
-      SELECT 
-        rf.id, 
-        rf.report_id as reportId,
-        rf.client_id as clientId,
-        c.name as clientName,
-        rf.rating,
-        rf.feedback_text as feedbackText,
-        rf.actions_taken as actionsTaken,
-        rf.start_date as startDate,
-        rf.end_date as endDate,
-        rf.vector_search_used as vectorSearchUsed,
-        rf.search_query as searchQuery,
-        rf.email_count as emailCount,
-        rf.copied_to_clipboard as copiedToClipboard,
-        rf.generation_time_ms as generationTimeMs,
-        rf.created_at as createdAt,
-        rf.user_agent as userAgent
-      FROM report_feedback rf
-      LEFT JOIN clients c ON rf.client_id = c.id
-      ORDER BY rf.created_at DESC
-      LIMIT 50
+    // Get all feedback from database
+    const { rows } = await db.connection.query(`
+      SELECT * FROM report_feedback
+      ORDER BY created_at DESC
     `);
     
-    const feedbackRows = stmt.all();
-    
-    // Process the data
-    const feedback = feedbackRows.map(row => ({
-      ...row,
-      vectorSearchUsed: row.vectorSearchUsed === 1,
-      copiedToClipboard: row.copiedToClipboard === 1,
-      actionsTaken: row.actionsTaken ? JSON.parse(row.actionsTaken) : [],
-    }));
-    
-    // Generate statistics
-    const statsStmt = db.connection.prepare(`
+    // Get summary statistics
+    const statsResult = await db.connection.query(`
       SELECT 
-        COUNT(*) as totalReports,
-        AVG(CASE WHEN rating IS NOT NULL THEN rating ELSE NULL END) as averageRating,
-        AVG(vector_search_used) as vectorSearchPercentage,
-        AVG(generation_time_ms) as averageGenerationTime,
-        SUM(CASE WHEN copied_to_clipboard = 1 THEN 1 ELSE 0 END) / CAST(COUNT(*) AS REAL) as clipboardCopyRate,
-        SUM(CASE WHEN rating IS NOT NULL THEN 1 ELSE 0 END) / COUNT(*) as feedbackSubmissionRate
+        COUNT(*) as total,
+        AVG(rating) as avg_rating,
+        COUNT(CASE WHEN rating = 5 THEN 1 END) as rating_5,
+        COUNT(CASE WHEN rating = 4 THEN 1 END) as rating_4,
+        COUNT(CASE WHEN rating = 3 THEN 1 END) as rating_3,
+        COUNT(CASE WHEN rating = 2 THEN 1 END) as rating_2,
+        COUNT(CASE WHEN rating = 1 THEN 1 END) as rating_1,
+        COUNT(CASE WHEN vector_search_used = true THEN 1 END) as vector_search_count,
+        ROUND(AVG(CASE WHEN vector_search_used = true THEN rating END), 2) as vector_search_avg_rating,
+        ROUND(AVG(CASE WHEN vector_search_used = false THEN rating END), 2) as regular_search_avg_rating
       FROM report_feedback
     `);
     
-    const statsRow = statsStmt.get();
-    
-    // Get most common actions
-    const actionsStmt = db.connection.prepare(`
-      SELECT actions_taken FROM report_feedback
-      WHERE actions_taken IS NOT NULL AND actions_taken != '[]'
+    // Get actions taken
+    const actionsResult = await db.connection.query(`
+      SELECT 
+        actions_taken::text as action,
+        COUNT(*) as count
+      FROM report_feedback
+      WHERE actions_taken IS NOT NULL AND actions_taken::text != '[]'
+      GROUP BY actions_taken
+      ORDER BY count DESC
     `);
     
-    const actionsRows = actionsStmt.all();
+    // Process the data
+    const feedback = rows.map(row => ({
+      ...row,
+      vectorSearchUsed: row.vector_search_used === 1,
+      copiedToClipboard: row.copied_to_clipboard === 1,
+      actionsTaken: row.actions_taken ? JSON.parse(row.actions_taken) : [],
+    }));
     
-    // Count action frequencies
-    const actionCounts = {};
-    actionsRows.forEach(row => {
-      try {
-        const actions = JSON.parse(row.actions_taken);
-        actions.forEach(action => {
-          actionCounts[action] = (actionCounts[action] || 0) + 1;
-        });
-      } catch (e) {
-        console.error('Error parsing actions:', e);
-      }
-    });
-    
-    // Sort actions by frequency
-    const mostCommonActions = Object.entries(actionCounts)
-      .map(([action, count]) => ({ action, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-    
+    // Generate statistics
     const stats = {
-      totalReports: statsRow.totalReports || 0,
-      averageRating: statsRow.averageRating || 0,
-      vectorSearchPercentage: statsRow.vectorSearchPercentage || 0,
-      averageGenerationTime: statsRow.averageGenerationTime || 0,
-      clipboardCopyRate: statsRow.clipboardCopyRate || 0,
-      feedbackSubmissionRate: statsRow.feedbackSubmissionRate || 0,
-      mostCommonActions,
+      totalReports: statsResult.rows[0].total || 0,
+      averageRating: statsResult.rows[0].avg_rating || 0,
+      vectorSearchPercentage: statsResult.rows[0].vector_search_count / statsResult.rows[0].total || 0,
+      averageGenerationTime: statsResult.rows[0].avg_rating || 0,
+      clipboardCopyRate: statsResult.rows[0].total - statsResult.rows[0].vector_search_count / statsResult.rows[0].total || 0,
+      feedbackSubmissionRate: statsResult.rows[0].total / statsResult.rows[0].total || 0,
+      mostCommonActions: actionsResult.rows.map(row => ({
+        action: row.action,
+        count: row.count,
+      })),
     };
     
     return NextResponse.json({

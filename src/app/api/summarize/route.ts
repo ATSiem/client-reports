@@ -103,8 +103,18 @@ export async function POST(request: Request) {
       if (client) {
         clientName = client.name;
         try {
-          clientDomains = [...clientDomains, ...JSON.parse(client.domains)];
-          clientEmails = [...clientEmails, ...JSON.parse(client.emails)];
+          // Safely parse domains and emails, handling empty arrays or invalid JSON
+          if (client.domains && client.domains !== '[]') {
+            const parsedDomains = typeof client.domains === 'string' ? 
+              JSON.parse(client.domains) : client.domains;
+            clientDomains = [...clientDomains, ...(Array.isArray(parsedDomains) ? parsedDomains : [])];
+          }
+          
+          if (client.emails && client.emails !== '[]') {
+            const parsedEmails = typeof client.emails === 'string' ? 
+              JSON.parse(client.emails) : client.emails;
+            clientEmails = [...clientEmails, ...(Array.isArray(parsedEmails) ? parsedEmails : [])];
+          }
           console.log('Summarize API - Client domains:', clientDomains);
           console.log('Summarize API - Client emails:', clientEmails);
         } catch (err) {

@@ -12,59 +12,70 @@ const actionSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // Get request data
-    const data = await request.json();
+    const { feedbackId, action, value } = await request.json();
     
-    // Validate data
-    const validatedData = actionSchema.parse(data);
+    // Validate inputs
+    if (!feedbackId || !action) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
     
-    // Check if report feedback exists
-    const checkStmt = db.connection.prepare(`
-      SELECT id FROM report_feedback 
-      WHERE report_id = ?
-    `);
-    
-    const existingFeedback = checkStmt.get(validatedData.reportId);
-    
-    if (existingFeedback) {
-      // Update existing feedback record with action
-      if (validatedData.action === 'clipboard_copy') {
-        const updateStmt = db.connection.prepare(`
-          UPDATE report_feedback 
-          SET copied_to_clipboard = 1
-          WHERE report_id = ?
-        `);
-        updateStmt.run(validatedData.reportId);
+    // Update feedback record based on action
+    if (action === 'copied_to_clipboard') {
+      // Check if feedback exists
+      const { rows } = await db.connection.query(`
+        SELECT id FROM report_feedback 
+        WHERE id = $1
+      `, [feedbackId]);
+      
+      if (rows.length === 0) {
+        return NextResponse.json(
+          { error: 'Feedback not found' },
+          { status: 404 }
+        );
       }
+      
+      // Update the copy to clipboard status
+      await db.connection.query(`
+        UPDATE report_feedback 
+        SET copied_to_clipboard = $1 
+        WHERE id = $2
+      `, [value ? true : false, feedbackId]);
+    } else if (action === 'generation_time') {
+      // For recording generation time
+      if (typeof value !== 'number') {
+        return NextResponse.json(
+          { error: 'Value must be a number for generation_time action' },
+          { status: 400 }
+        );
+      }
+      
+      // Update the generation time
+      await db.connection.query(`
+        UPDATE report_feedback 
+        SET generation_time_ms = $1 
+        WHERE id = $2
+      `, [value, feedbackId]);
     } else {
-      // Create a minimal feedback entry with just the action
-      const insertStmt = db.connection.prepare(`
-        INSERT INTO report_feedback (
-          id, report_id, copied_to_clipboard, created_at
-        ) VALUES (?, ?, ?, unixepoch())
-      `);
-      
-      const feedbackId = crypto.randomUUID();
-      
-      insertStmt.run(
-        feedbackId,
-        validatedData.reportId,
-        validatedData.action === 'clipboard_copy' ? 1 : 0
+      return NextResponse.json(
+        { error: 'Invalid action' },
+        { status: 400 }
       );
     }
     
     // Return success
     return NextResponse.json({
       success: true,
-      message: 'Action recorded'
+      message: `Feedback action ${action} recorded`
     });
   } catch (error) {
-    console.error('Error recording action:', error);
+    console.error('Error recording feedback action:', error);
     
-    // Still return success to prevent user disruption
-    return NextResponse.json({
-      success: true,
-      message: 'Action tracked'
-    });
+    return NextResponse.json(
+      { error: 'Failed to record feedback action' },
+      { status: 500 }
+    );
   }
 }

@@ -34,32 +34,31 @@ export async function POST(request: NextRequest) {
                       request.headers.get('x-real-ip') || 
                       '0.0.0.0';
     
-    // Insert into database
-    const insertStmt = db.connection.prepare(`
-      INSERT INTO report_feedback (
-        id, report_id, client_id, rating, feedback_text, actions_taken,
-        start_date, end_date, vector_search_used, search_query, email_count,
-        user_agent, ip_address, copied_to_clipboard
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    `);
-    
+    // Store feedback in database
     const feedbackId = crypto.randomUUID();
     
-    insertStmt.run(
-      feedbackId,
-      validatedData.reportId,
-      validatedData.clientId,
-      validatedData.rating,
-      validatedData.feedbackText || '',
-      JSON.stringify(validatedData.actionsTaken || []),
-      validatedData.reportParameters.startDate,
-      validatedData.reportParameters.endDate,
-      validatedData.reportParameters.vectorSearchUsed ? 1 : 0,
-      validatedData.reportParameters.searchQuery || '',
-      validatedData.reportParameters.emailCount,
-      userAgent,
-      ipAddress
-    );
+    // Convert PostgreSQL to use query method instead of prepare
+    await db.connection.query(`
+      INSERT INTO report_feedback (
+        id, report_id, client_id, rating, feedback_text, 
+        actions_taken, start_date, end_date, 
+        vector_search_used, search_query, email_count,
+        copied_to_clipboard, generation_time_ms,
+        created_at, user_agent, ip_address
+      ) VALUES (
+        $1, $2, $3, $4, $5, 
+        $6, $7, $8, 
+        $9, $10, $11,
+        $12, $13,
+        NOW(), $14, $15
+      )
+    `, [
+      feedbackId, validatedData.reportId, validatedData.clientId, validatedData.rating, validatedData.feedbackText || '',
+      JSON.stringify(validatedData.actionsTaken || []), validatedData.reportParameters.startDate, validatedData.reportParameters.endDate,
+      validatedData.reportParameters.vectorSearchUsed ? 1 : 0, validatedData.reportParameters.searchQuery || '', validatedData.reportParameters.emailCount,
+      false, 0,
+      userAgent, ipAddress
+    ]);
     
     // Return success
     return NextResponse.json({

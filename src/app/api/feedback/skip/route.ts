@@ -30,18 +30,22 @@ export async function POST(request: NextRequest) {
                       request.headers.get('x-real-ip') || 
                       '0.0.0.0';
     
-    // Insert into database with null rating (indicating skipped)
-    const insertStmt = db.connection.prepare(`
-      INSERT INTO report_feedback (
-        id, report_id, client_id, rating, feedback_text, actions_taken,
-        start_date, end_date, vector_search_used, search_query, email_count,
-        user_agent, ip_address, copied_to_clipboard
-      ) VALUES (?, ?, ?, NULL, 'skipped', '[]', ?, ?, ?, ?, ?, ?, ?, 0)
-    `);
-    
+    // Store skip event in database
     const feedbackId = crypto.randomUUID();
     
-    insertStmt.run(
+    await db.connection.query(`
+      INSERT INTO report_feedback (
+        id, report_id, client_id, rating, 
+        start_date, end_date, 
+        vector_search_used, search_query, email_count,
+        created_at, user_agent, ip_address
+      ) VALUES (
+        $1, $2, $3, NULL, 
+        $4, $5, 
+        $6, $7, $8,
+        NOW(), $9, $10
+      )
+    `, [
       feedbackId,
       validatedData.reportId,
       validatedData.clientId,
@@ -52,21 +56,23 @@ export async function POST(request: NextRequest) {
       validatedData.reportParameters.emailCount,
       userAgent,
       ipAddress
-    );
+    ]);
     
     // Return success
     return NextResponse.json({
       success: true,
-      message: 'Skipped feedback recorded',
+      message: 'Skip recorded',
       id: feedbackId
     });
   } catch (error) {
-    console.error('Error saving skipped feedback:', error);
+    console.error('Error recording skip:', error);
     
-    // Still return success to prevent user disruption
-    return NextResponse.json({
-      success: true,
-      message: 'Feedback skipped',
-    });
+    return NextResponse.json(
+      { 
+        error: 'Failed to record skip',
+        details: error instanceof Error ? error.message : String(error)
+      },
+      { status: 500 }
+    );
   }
 }
