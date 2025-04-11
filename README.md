@@ -1,6 +1,6 @@
 # Client Communication Reports
 
-This application helps you generate professional client communication reports by analyzing your email communications with clients. It combines Next.js, TypeScript, the Vercel AI SDK, Microsoft Graph API, and SQLite to create a powerful AI tool for client communication management.
+This application helps you generate professional client communication reports by analyzing your email communications with clients. It combines Next.js, TypeScript, the Vercel AI SDK, Microsoft Graph API, and PostgreSQL to create a powerful AI tool for client communication management.
 
 ## Features
 
@@ -23,6 +23,24 @@ This application helps you generate professional client communication reports by
 - The AI intelligently generates content for any placeholder you define
 - Templates can be linked to specific clients
 
+### AI-powered Report Generation
+- Craft detailed client activity reports using AI
+
+### Microsoft Integration
+- Sync with Microsoft 365 email accounts
+
+### Vector Search
+- Find related emails through semantic search
+
+### Responsive Design
+- Works on desktop, tablet, and mobile devices
+
+### Database
+- PostgreSQL with pgvector extension for vector search
+
+### Authentication
+- Microsoft 365 account login
+
 ## Getting Started
 
 1. Clone this repository
@@ -39,7 +57,7 @@ This application helps you generate professional client communication reports by
 
 - **Frontend**: Next.js, React, TailwindCSS, shadcn/ui
 - **Backend**: Next.js API Routes
-- **Database**: SQLite with Drizzle ORM
+- **Database**: PostgreSQL with pgvector extension
 - **AI**: OpenAI GPT-4o via Vercel AI SDK
 - **Authentication**: Microsoft OAuth via MSAL
 - **Email Integration**: Microsoft Graph API
@@ -226,7 +244,7 @@ These scripts help maintain data integrity when migrating from older versions of
 
 ## Database Management
 
-The application uses SQLite for data storage. The database is automatically initialized when the application starts, ensuring the correct schema is in place.
+The application uses PostgreSQL for data storage with the pgvector extension for AI vector search capabilities. The database is automatically initialized when the application starts, ensuring the correct schema is in place.
 
 ### Database Initialization
 
@@ -234,6 +252,21 @@ The application uses SQLite for data storage. The database is automatically init
 - The initialization script checks for the existence of required tables and columns
 - If the database or tables don't exist, they are created with the correct schema
 - If tables exist but are missing required columns (like `user_id`), they are added automatically
+
+### Database Connection
+
+The application connects to PostgreSQL using the connection string specified in the `DATABASE_URL` environment variable. In development mode, the database is automatically created and initialized if it doesn't exist.
+
+### Custom Database Configuration
+
+You can configure the database connection using the following environment variables:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/email_agent
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+POSTGRES_DB=email_agent
+```
 
 ### Testing Database Initialization
 
