@@ -41,20 +41,127 @@ export default function FeedbackAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { darkMode } = useTheme();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  
+  // Debug user details
+  useEffect(() => {
+    if (user) {
+      console.log('Auth user details:', {
+        name: user.name,
+        username: user.username,
+        authenticated: isAuthenticated
+      });
+    } else {
+      console.log('No user details available');
+    }
+  }, [user, isAuthenticated]);
+  
+  // Function to check if user is admin via API
+  useEffect(() => {
+    async function checkAdminStatus() {
+      if (!user || !user.username) {
+        console.log('No user or username available');
+        setIsAdmin(false);
+        return;
+      }
+      
+      try {
+        console.log('Checking admin status for:', user.username);
+        const token = sessionStorage.getItem('msGraphToken');
+        
+        // Use fetch with AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch('/api/admin/check', {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+            'x-user-email': user.username.toLowerCase() || '',
+          },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        console.log('Admin check response status:', response.status);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Admin check result:', data);
+          
+          // In development with bypass enabled, always allow
+          const isDevelopment = process.env.NODE_ENV !== 'production';
+          if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
+            console.log('Development admin bypass: enabled');
+            setIsAdmin(true);
+            return;
+          }
+          
+          // Set admin status based on the API response
+          setIsAdmin(data.isAdmin);
+        } else {
+          console.error('Admin check failed:', response.status);
+          
+          // In development, we might want to allow access even if the check fails
+          const isDevelopment = process.env.NODE_ENV !== 'production';
+          if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
+            console.log('Development admin bypass after API error: enabled');
+            setIsAdmin(true);
+            return;
+          }
+          
+          setIsAdmin(false);
+        }
+      } catch (err) {
+        console.error('Error checking admin status:', err);
+        
+        // In development, we might want to allow access even if the check fails
+        const isDevelopment = process.env.NODE_ENV !== 'production';
+        if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
+          console.log('Development admin bypass after error: enabled');
+          setIsAdmin(true);
+          return;
+        }
+        
+        setIsAdmin(false);
+      }
+    }
+    
+    if (isAuthenticated && user) {
+      checkAdminStatus();
+    }
+  }, [isAuthenticated, user]);
   
   // Function to download CSV with authentication
   const downloadCSV = async () => {
     try {
       const token = sessionStorage.getItem('msGraphToken');
+      if (!token || !user?.username) {
+        alert('Authentication required. Please sign in again.');
+        return;
+      }
+      
+      console.log('Downloading CSV with token and email:', !!token, user.username);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
       const response = await fetch('/api/admin/feedback/csv', {
         headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'x-user-email': user.username.toLowerCase(),
         },
+        signal: controller.signal
       });
       
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
+        if (response.status === 403) {
+          alert('Access denied. You do not have permission to access this resource.');
+          return;
+        }
         throw new Error('Failed to download CSV');
       }
       
@@ -69,7 +176,11 @@ export default function FeedbackAnalyticsPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error downloading CSV:', err);
-      alert('Failed to download CSV data');
+      if (err.name === 'AbortError') {
+        alert('Request timed out. Please try again.');
+      } else {
+        alert('Failed to download CSV data');
+      }
     }
   };
   
@@ -78,36 +189,77 @@ export default function FeedbackAnalyticsPage() {
       try {
         // Get the auth token from sessionStorage
         const token = sessionStorage.getItem('msGraphToken');
+        if (!token) {
+          console.error('No authentication token available');
+          setError('Authentication required. Please sign in again.');
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Fetching feedback with token:', !!token);
+        console.log('User email for headers:', user?.username);
+        
+        if (!user?.username) {
+          console.error('No user email available for API request');
+          setError('User email not available. Please sign in again.');
+          setLoading(false);
+          return;
+        }
+        
+        // Use fetch with AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         
         const response = await fetch('/api/admin/feedback', {
           headers: {
-            'Authorization': token ? `Bearer ${token}` : '',
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
+            'x-user-email': user.username.toLowerCase(),
           },
+          signal: controller.signal
         });
         
+        clearTimeout(timeoutId);
+        console.log('Feedback API response status:', response.status);
+        
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('Server error:', response.status, errorData);
-          throw new Error(errorData.message || 'Failed to fetch feedback data');
+          if (response.status === 403) {
+            setError('Access denied. You do not have permission to access this resource.');
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Server error:', response.status, errorData);
+            throw new Error(errorData.message || 'Failed to fetch feedback data');
+          }
+          setLoading(false);
+          return;
         }
         
         const data = await response.json();
+        console.log('Feedback data received:', !!data);
         
         setFeedback(data.feedback || []);
         setStats(data.stats || null);
       } catch (err) {
-        console.error('Error fetching feedback:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load feedback data');
+        if (err.name === 'AbortError') {
+          console.error('Feedback request timed out');
+          setError('Request timed out. Please try again.');
+        } else {
+          console.error('Error fetching feedback:', err);
+          setError(err instanceof Error ? err.message : 'Failed to load feedback data');
+        }
       } finally {
         setLoading(false);
       }
     }
     
-    if (isAuthenticated) {
+    if (isAuthenticated && isAdmin) {
+      console.log('User is authenticated and admin, fetching feedback');
       fetchFeedback();
+    } else {
+      setLoading(false);
+      console.log('Not fetching feedback. Auth:', isAuthenticated, 'Admin:', isAdmin);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user, isAdmin]);
   
   if (authLoading) {
     return (
@@ -127,6 +279,22 @@ export default function FeedbackAnalyticsPage() {
         <div className="flex flex-col items-center justify-center h-64 gap-4">
           <p className="text-gray-500 dark:text-gray-400">Please sign in to access this page</p>
           <LoginButton />
+        </div>
+      </div>
+    );
+  }
+  
+  if (!isAdmin) {
+    return (
+      <div className="container mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">Feedback Analytics</h1>
+        <div className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 p-4 rounded-md">
+          <p>Access denied. You must be an administrator to view this page.</p>
+        </div>
+        <div className="mt-4">
+          <Link href="/reports" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+            Back to Reports
+          </Link>
         </div>
       </div>
     );
@@ -266,7 +434,23 @@ export default function FeedbackAnalyticsPage() {
                 {feedback.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {new Date(Number(item.createdAt) * 1000).toLocaleDateString()}
+                      {(() => {
+                        try {
+                          // Try parsing as timestamp (seconds)
+                          const timestamp = typeof item.createdAt === 'number' 
+                            ? item.createdAt * 1000 
+                            : Number(item.createdAt) * 1000;
+                          
+                          const date = new Date(timestamp);
+                          
+                          // Check if date is valid before formatting
+                          return !isNaN(date.getTime()) 
+                            ? date.toLocaleDateString() 
+                            : 'Date unknown';
+                        } catch {
+                          return 'Date unknown';
+                        }
+                      })()}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {item.clientName || 'Unknown'}
