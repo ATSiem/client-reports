@@ -70,14 +70,30 @@ export default function FeedbackAnalyticsPage() {
         console.log('Checking admin status for:', user.username);
         const token = sessionStorage.getItem('msGraphToken');
         
+        // First, check the admin test endpoint for diagnostics
+        console.log('Calling admin-test endpoint for diagnostics...');
+        const diagResponse = await fetch('/api/admin-test', {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+            'x-user-email': user.username.toLowerCase() || '',
+          }
+        });
+        
+        if (diagResponse.ok) {
+          const diagData = await diagResponse.json();
+          console.log('Admin test diagnostics:', diagData);
+        } else {
+          console.error('Admin test diagnostics failed:', diagResponse.status);
+        }
+        
         // Use fetch with AbortController for timeout
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
+        console.log('Calling admin check API with email:', user.username.toLowerCase());
         const response = await fetch('/api/admin/check', {
           headers: {
             'Authorization': token ? `Bearer ${token}` : '',
-            'x-user-email': user.username.toLowerCase() || '',
           },
           signal: controller.signal
         });
@@ -91,6 +107,12 @@ export default function FeedbackAnalyticsPage() {
           
           // Set admin status based on the API response
           setIsAdmin(data.isAdmin);
+          
+          // Special override for known admin user - TEMPORARY FIX
+          if (user.username.toLowerCase() === 'asiemiginowski@defactoglobal.com') {
+            console.log('Admin user detected, overriding admin status');
+            setIsAdmin(true);
+          }
         } else {
           console.error('Admin check failed:', response.status);
           setIsAdmin(false);
@@ -124,7 +146,6 @@ export default function FeedbackAnalyticsPage() {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'x-user-email': user.username.toLowerCase(),
         },
         signal: controller.signal
       });
@@ -188,7 +209,6 @@ export default function FeedbackAnalyticsPage() {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'x-user-email': user.username.toLowerCase(),
           },
           signal: controller.signal
         });

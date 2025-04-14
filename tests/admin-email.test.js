@@ -26,7 +26,7 @@ const { env } = require('../src/lib/env');
 
 // Import the isAdminEmail function directly
 // Note: We need to import after mocking dependencies
-const { isAdminEmail } = require('../src/middleware');
+const { isAdminEmail } = require('../src/lib/admin');
 
 describe('Admin Email Validation', () => {
   beforeEach(() => {

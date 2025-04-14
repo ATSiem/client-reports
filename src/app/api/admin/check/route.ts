@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { env } from '~/lib/env';
+import { isAdminEmail } from '~/lib/admin';
 
 // Admin check API that validates if a user is an admin
 export async function GET(request: Request) {
@@ -24,70 +25,32 @@ export async function GET(request: Request) {
       }, { status: 400 });
     }
     
-    // Normalize the email
-    const normalizedEmail = userEmail.toLowerCase().trim();
+    // Check if the email is an admin
+    const isAdmin = isAdminEmail(userEmail);
     
-    // Get the list of admin emails from environment variables
+    // For diagnostic purposes, provide more details about the check
+    const normalizedEmail = userEmail.toLowerCase().trim();
     const adminEmailsRaw = env.ADMIN_EMAILS || '';
     const adminEmails = adminEmailsRaw
       .split(',')
       .map(e => e.trim().toLowerCase())
       .filter(e => e.length > 0);
-    
-    // Compare the email to the list of admin emails
-    const isAdmin = adminEmails.includes(normalizedEmail);
-    
-    // For development purposes, check component parts separately
-    let componentMatch = false;
-    let debugInfo = null;
-    
-    if (normalizedEmail.includes('@')) {
-      const [inputLocalPart, inputDomain] = normalizedEmail.split('@');
       
-      debugInfo = {
-        normalizedEmail, 
-        adminEmails: adminEmails.map(email => {
-          // Obfuscate emails slightly for security
-          if (!email.includes('@')) return email;
-          const [adminLocal, adminDomain] = email.split('@');
-          return `${adminLocal.substring(0, 3)}***@${adminDomain}`;
-        }),
-        inputParts: {
-          localPart: inputLocalPart,
-          domain: inputDomain
-        }
-      };
-      
-      // Check each admin email
-      adminEmails.forEach(adminEmail => {
-        if (adminEmail.includes('@')) {
-          const [adminLocalPart, adminDomain] = adminEmail.split('@');
-          
-          const localPartMatch = adminLocalPart.toLowerCase() === inputLocalPart.toLowerCase();
-          const domainMatch = adminDomain.toLowerCase() === inputDomain.toLowerCase();
-          
-          if (localPartMatch && domainMatch) {
-            componentMatch = true;
-          }
-        }
-      });
-    }
-    
-    // Check if we have a component match even if the exact match failed
-    if (!isAdmin && componentMatch) {
-      console.log('Admin component match found for:', normalizedEmail);
-      return NextResponse.json({ 
-        isAdmin: true,
-        method: 'component_match',
-        debug: debugInfo
-      });
-    }
+    const debugInfo = {
+      normalizedEmail,
+      adminEmails: adminEmails.map(email => {
+        // Obfuscate emails slightly for security
+        if (!email.includes('@')) return email;
+        const [adminLocal, adminDomain] = email.split('@');
+        return `${adminLocal.substring(0, 3)}***@${adminDomain}`;
+      })
+    };
     
     // Return the result
     return NextResponse.json({ 
       isAdmin,
-      method: isAdmin ? 'exact_match' : 'no_match',
-      debug: debugInfo 
+      method: isAdmin ? 'shared_utility' : 'no_match',
+      debug: debugInfo
     });
   } catch (error) {
     console.error('Error in admin check API:', error);

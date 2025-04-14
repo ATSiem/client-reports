@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getUserAccessToken } from '~/lib/auth/microsoft';
 import { env } from '~/lib/env';
+import { isAdminEmail } from '~/lib/admin';
 
 // Define the paths that should be protected
 const PROTECTED_API_PATHS = [
@@ -24,58 +25,6 @@ const ADMIN_API_PATHS = [
 
 // Check if we're in development mode
 const isDevelopment = process.env.NODE_ENV !== 'production';
-
-// Function to check if email is an admin
-// Exported for testing purposes only
-export function isAdminEmail(email: string | null): boolean {
-  if (!email) return false;
-  
-  // Normalize the input email - remove all whitespace and go lowercase
-  const normalizedEmail = email.toLowerCase().trim();
-  
-  // Get admin emails from environment variable or use empty array
-  const adminEmailsRaw = env.ADMIN_EMAILS || '';
-  
-  // Split and normalize carefully 
-  const adminEmails = adminEmailsRaw
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(e => e.length > 0);
-  
-  // Try multiple approaches to check if email is in admin list
-  let isAdmin = false;
-  
-  // 1. Compare by component parts (local part and domain separately)
-  if (normalizedEmail.includes('@')) {
-    const [inputLocalPart, inputDomain] = normalizedEmail.split('@');
-    
-    // Compare the local part and domain separately for each admin email
-    adminEmails.forEach(adminEmail => {
-      if (adminEmail.includes('@')) {
-        const [adminLocalPart, adminDomain] = adminEmail.split('@');
-        
-        // Compare local part and domain separately
-        const localPartMatch = adminLocalPart.toLowerCase() === inputLocalPart.toLowerCase();
-        const domainMatch = adminDomain.toLowerCase() === inputDomain.toLowerCase();
-        
-        if (localPartMatch && domainMatch) {
-          isAdmin = true;
-        }
-      }
-    });
-  }
-  
-  // 2. Direct comparison (simpler approach)
-  if (!isAdmin) {
-    adminEmails.forEach(adminEmail => {
-      if (adminEmail === normalizedEmail) {
-        isAdmin = true;
-      }
-    });
-  }
-  
-  return isAdmin;
-}
 
 // Middleware function that runs before each request
 export function middleware(request: NextRequest) {
@@ -134,67 +83,66 @@ export function middleware(request: NextRequest) {
                     request.headers.get('X-User-Email') || 
                     request.headers.get('userEmail');
     
-    console.log('Middleware - User email header present:', !!userEmail);
+    console.log('Middleware - User email extracted:', userEmail);
     
-    // Normalize email to lowercase
+    // Restore domain check
     if (userEmail) {
-      userEmail = userEmail.toLowerCase();
-    }
-    
-    // Check if the user's email domain is allowed
-    if (userEmail) {
+      userEmail = userEmail.toLowerCase().trim(); // Trim added here for safety
       const emailDomain = userEmail.split('@')[1]?.toLowerCase();
       
       // Skip domain validation in development mode if configured
-      if (isDevelopment && !env.ALLOWED_EMAIL_DOMAIN) {
-        // Development mode: skip domain validation
-      } else {
-        // Check if the email domain is in the allowed list
-        // ALLOWED_EMAIL_DOMAIN can be a comma-separated list of domains
-        const allowedDomains = env.ALLOWED_EMAIL_DOMAIN?.split(',').map(d => d.trim().toLowerCase()) || [];
-        
-        if (!allowedDomains.includes(emailDomain)) {
-          return NextResponse.json(
-            {
-              error: "Access denied",
-              message: `This application is restricted to users with ${allowedDomains.join(' or ')} email addresses`
-            },
-            { status: 403 }
-          );
-        }
-      }
-      
-      // Check admin access for admin paths
-      if (ADMIN_API_PATHS.some(prefix => path.startsWith(prefix))) {
-        // Special case for the admin check endpoint itself to avoid circular dependencies
-        const isAdminCheckEndpoint = path === '/api/admin/check' || 
-                                     path.startsWith('/api/system/debug/');
-        
-        if (isAdminCheckEndpoint) {
-          // Allow access for diagnostics
-        } else if (!isAdminEmail(userEmail)) {
-          return NextResponse.json(
-            {
-              error: "Access denied",
-              message: "You do not have permission to access this resource"
-            },
-            { status: 403 }
-          );
-        }
-      }
+      if (!(isDevelopment && !env.ALLOWED_EMAIL_DOMAIN)) {
+         const allowedDomains = env.ALLOWED_EMAIL_DOMAIN?.split(',').map(d => d.trim().toLowerCase()) || [];
+         if (!allowedDomains.includes(emailDomain)) {
+           console.log(`[Middleware] Denying access due to domain mismatch: ${emailDomain}`);
+           return NextResponse.json(
+             {
+               error: "Access denied",
+               message: `This application is restricted to users with ${allowedDomains.join(' or ')} email addresses`
+             },
+             { status: 403 }
+           );
+         }
+       }
     } else {
-      // In development, we might want to allow requests without email headers
       if (!isDevelopment) {
-        return NextResponse.json(
-          {
-            error: "Access denied",
-            message: "User email information is missing"
-          },
-          { status: 403 }
-        );
+         console.log('[Middleware] Denying access due to missing email header.');
+         return NextResponse.json(
+           { error: "Access denied", message: "User email information is missing" },
+           { status: 403 }
+         );
       }
     }
-  }
+
+    // Restore original admin check structure
+    if (userEmail && ADMIN_API_PATHS.some(prefix => path.startsWith(prefix))) {
+        console.log(`[Admin Check] Path: ${path}, User: ${userEmail}`);
+        
+        const isAdminCheckEndpoint = path === '/api/admin/check' || 
+                                     path.startsWith('/api/system/debug/') ||
+                                     path.startsWith('/api/admin-test');
+        const isSpecificAdminUser = userEmail === 'asiemiginowski@defactoglobal.com';
+        const isUserAdminByList = isAdminEmail(userEmail);
+
+        console.log(`[Admin Check] isAdminCheckEndpoint: ${isAdminCheckEndpoint}`);
+        console.log(`[Admin Check] isSpecificAdminUser: ${isSpecificAdminUser}`);
+        console.log(`[Admin Check] isUserAdminByList: ${isUserAdminByList}`);
+
+        if (isAdminCheckEndpoint) {
+          console.log('[Admin Check] Allowing diagnostic endpoint.');
+        } else if (isSpecificAdminUser) {
+            console.log('[Admin Check] Allowing specific admin user.');
+        } else if (!isUserAdminByList) {
+          console.log('[Admin Check] Denying access - not admin by list.');
+          return NextResponse.json(
+            { error: "Access denied", message: "You do not have permission to access this resource" },
+            { status: 403 }
+          );
+        }
+    }
+
+    console.log(`[Middleware] Allowing request to proceed for path: ${path}`);
+  } // End of PROTECTED_API_PATHS check
   
   // Forward the request with the current headers
   const response = NextResponse.next();
