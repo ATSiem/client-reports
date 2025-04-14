@@ -5,38 +5,34 @@ set -a # automatically export all variables
 source .env.production
 set +a # stop automatically exporting
 
-# Make sure the script is executable
-chmod +x ./build-prod.sh
-chmod +x ./run-prod.sh
-
-# Print important environment variables for verification
 echo "===== DEPLOYING PRODUCTION APPLICATION ====="
+echo "NODE_ENV = ${NODE_ENV}"
+echo "DATABASE_TYPE = ${DATABASE_TYPE}"
 echo "DATABASE_URL = ${DATABASE_URL//:*@/:****@}"
 echo "POSTGRES_USER = ${POSTGRES_USER}"
 echo "POSTGRES_DB = ${POSTGRES_DB}"
 echo "POSTGRES_PASSWORD = [HIDDEN]"
 
-# Build the application
 echo "===== BUILDING APPLICATION ====="
-./build-prod.sh
+echo "Building production Docker container with configuration..."
+docker compose build --no-cache
 
-# Check if build succeeded
-if [ $? -ne 0 ]; then
-  echo "Build failed! Check the logs above."
+if [ $? -eq 0 ]; then
+  echo "Docker build completed successfully!"
+else
+  echo "Docker build failed. Please check the logs above for errors."
   exit 1
 fi
 
-# Run the application
 echo "===== STARTING APPLICATION ====="
-./run-prod.sh -d
+echo "Starting containers with configuration from .env.production..."
+docker compose up --no-build -d
 
-# Check if application started
 if [ $? -ne 0 ]; then
   echo "Application failed to start! Check the logs above."
   exit 1
 fi
 
-# Print success message
 echo "===== DEPLOYMENT SUCCESSFUL ====="
 echo "The application is running at http://localhost:3000"
 echo "To view logs: docker compose logs"
