@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getUserAccessToken } from '~/lib/auth/microsoft';
 import { env } from '~/lib/env';
-import { isAdminEmail } from '~/lib/admin';
 
 // Define the paths that should be protected
 const PROTECTED_API_PATHS = [
@@ -117,12 +116,21 @@ export function middleware(request: NextRequest) {
     // Restore original admin check structure
     if (userEmail && ADMIN_API_PATHS.some(prefix => path.startsWith(prefix))) {
         console.log(`[Admin Check] Path: ${path}, User: ${userEmail}`);
-        
-        const isAdminCheckEndpoint = path === '/api/admin/check' || 
+
+        // Get admin emails from environment
+        const adminEmailsRaw = env.ADMIN_EMAILS || '';
+        const adminEmails = adminEmailsRaw
+          .split(',')
+          .map(e => e.trim().toLowerCase())
+          .filter(e => e.length > 0);
+
+        // Check if the current user email is in the admin list
+        const isUserAdminByList = adminEmails.includes(userEmail.toLowerCase().trim());
+
+        const isAdminCheckEndpoint = path === '/api/admin/check' ||
                                      path.startsWith('/api/system/debug/') ||
                                      path.startsWith('/api/admin-test');
         const isSpecificAdminUser = userEmail === 'asiemiginowski@defactoglobal.com';
-        const isUserAdminByList = isAdminEmail(userEmail);
 
         console.log(`[Admin Check] isAdminCheckEndpoint: ${isAdminCheckEndpoint}`);
         console.log(`[Admin Check] isSpecificAdminUser: ${isSpecificAdminUser}`);

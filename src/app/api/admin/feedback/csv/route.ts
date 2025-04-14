@@ -28,14 +28,40 @@ export async function GET(request: Request) {
     `);
     
     // Process the data
-    const feedback = rows.map(row => ({
-      ...row,
-      vectorSearchUsed: row.vectorSearchUsed === 1 ? 'Yes' : 'No',
-      copiedToClipboard: row.copiedToClipboard === 1 ? 'Yes' : 'No',
-      actionsTaken: row.actionsTaken ? JSON.parse(row.actionsTaken).join(', ') : '',
-      createdAt: new Date(Number(row.createdAt) * 1000).toISOString(),
-      feedbackText: row.feedbackText || ''
-    }));
+    const feedback = rows.map(row => {
+      let formattedCreatedAt = ''; // Default to empty string
+      const timestamp = Number(row.createdAt);
+      if (!isNaN(timestamp)) { // Check if conversion to Number resulted in a valid number
+        try {
+          formattedCreatedAt = new Date(timestamp * 1000).toISOString();
+        } catch (dateError) {
+          console.error(`Failed to format date for timestamp: ${row.createdAt}`, dateError);
+          // Keep formattedCreatedAt as empty string if toISOString fails
+        }
+      }
+
+      let parsedActionsTaken = ''; // Default to empty string
+      if (row.actionsTaken) {
+        try {
+          const actions = JSON.parse(row.actionsTaken);
+          if (Array.isArray(actions)) { // Ensure it's an array before joining
+             parsedActionsTaken = actions.join(', ');
+          }
+        } catch (jsonError) {
+          console.error(`Failed to parse actionsTaken JSON for row ID ${row.id}: ${row.actionsTaken}`, jsonError);
+          // Keep parsedActionsTaken as empty string if JSON is invalid
+        }
+      }
+
+      return {
+        ...row,
+        vectorSearchUsed: !!row.vectorSearchUsed ? 'Yes' : 'No',
+        copiedToClipboard: row.copiedToClipboard === 1 ? 'Yes' : 'No',
+        actionsTaken: parsedActionsTaken, // Use the safely parsed actions
+        createdAt: formattedCreatedAt, // Use the safely formatted date
+        feedbackText: row.feedbackText || ''
+      };
+    });
     
     // Define CSV headers
     const headers = [

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { env } from '~/lib/env';
-import { isAdminEmail } from '~/lib/admin';
 
 // Admin check API that validates if a user is an admin
 export async function GET(request: Request) {
@@ -25,17 +24,18 @@ export async function GET(request: Request) {
       }, { status: 400 });
     }
     
-    // Check if the email is an admin
-    const isAdmin = isAdminEmail(userEmail);
-    
-    // For diagnostic purposes, provide more details about the check
+    // Process admin emails list
     const normalizedEmail = userEmail.toLowerCase().trim();
     const adminEmailsRaw = env.ADMIN_EMAILS || '';
     const adminEmails = adminEmailsRaw
       .split(',')
       .map(e => e.trim().toLowerCase())
       .filter(e => e.length > 0);
-      
+
+    // Check if the email is an admin
+    const isAdmin = adminEmails.includes(normalizedEmail);
+    
+    // For diagnostic purposes, provide more details about the check
     const debugInfo = {
       normalizedEmail,
       adminEmails: adminEmails.map(email => {

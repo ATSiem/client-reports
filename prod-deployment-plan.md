@@ -41,22 +41,22 @@ The Client Reports application uses PostgreSQL for better scalability and pgvect
     To view logs:
 docker compose logs -f
 
-4. **Configure Express/Caddy**
+4. **Configure Express (https://expressjs.com) to work with Caddy**
 
-setting up HTTPS for node application:
-- ✅ configured TLS pass-through for comms.solutioncenter.ai to 192.168.10.39:3000
-- ✅ enabled HTTP connectivity to comms.solutioncenter.ai
-- setup HTTPS certificate via Express server
+- DNS Configuration for Production Domain
+  - ✅ Create an A record pointing comms.solutioncenter.ai to Caddy Server
+- Verify SSL certificate is properly provisioned by Express with TLS pass-through via Caddy
+
+- Setting up HTTPS for Production Domain
+  - ✅ configured TLS pass-through for comms.solutioncenter.ai to 192.168.10.39:3000
+  - ✅ enabled HTTP connectivity to comms.solutioncenter.ai
+  - setup HTTPS certificate via Express server
   - backup plan: setting up another Caddy server on the end server as part of the docker stack to enable the certificate
 
-5. **Verify Deployment**
-   - Confirm application runs at https://comms.solutioncenter.ai
-   - Verify login with Azure AD
-   - Test report generation functionality
-
-## DNS Configuration
-- ✅ Create an A record pointing comms.solutioncenter.ai to Caddy Server
-- Verify SSL certificate is properly provisioned by Express with TLS pass-through via Caddy
+- Verify Deployment
+  - Confirm application runs at https://comms.solutioncenter.ai
+  - Verify login with Azure AD
+  - Test report generation functionality
 
 ## Troubleshooting
 
