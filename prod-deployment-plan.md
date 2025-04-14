@@ -39,22 +39,43 @@ The Client Reports application uses PostgreSQL for better scalability and pgvect
 - Provides status information during deployment
 
     To view logs:
-docker compose logs -f
+    docker compose logs -f app  # View app logs
+    docker compose logs -f caddy # View Caddy logs
 
-4. **Configure Express (https://expressjs.com) to work with Caddy**
+4. **Configure Caddy within Docker for HTTPS**
+
+   - The `docker-compose.yml` now includes a `caddy` service responsible for handling HTTPS.
+   - A `./Caddyfile` configures this Caddy service:
+     - It automatically obtains and renews SSL certificates for `comms.solutioncenter.ai` using Let's Encrypt.
+     - **Important:** It likely requires DNS challenge configuration (`tls dns ...`) because the main external Caddy uses `tls passthrough`. Credentials for your DNS provider must be securely passed to the Caddy container (e.g., via `.env` and `environment` or `env_file` in `docker-compose.yml`).
+     - It reverse proxies HTTPS requests to the `app` service over HTTP (port 3000) within the Docker network.
+   - The `caddy` service maps host port `3000` to its container port `443` to receive the passthrough TLS traffic.
+   - The `app` service in `docker-compose.yml` no longer exposes port 3000 directly to the host.
+
+- **Main External Caddy Server Configuration (ACTION REQUIRED)**
+  - **CRITICAL:** Update the main Caddy server's configuration. The `tls passthrough` directive for `comms.solutioncenter.ai` must now point to the Mac mini's IP address (`192.168.10.39`) and the **host port `3000`** (as defined in `docker-compose.yml`), NOT the original port `3000` used by the app directly or the previously suggested `8443`.
+    ```caddy
+    # Example snippet for main Caddy server (update required)
+    comms.solutioncenter.ai {
+      tls passthrough 192.168.10.39:3000
+      # Potentially add header forwarding if needed
+      # header_up Host {upstream_hostport}
+    }
+    ```
 
 - DNS Configuration for Production Domain
-  - ✅ Create an A record pointing comms.solutioncenter.ai to Caddy Server
-- Verify SSL certificate is properly provisioned by Express with TLS pass-through via Caddy
+  - ✅ A record `comms.solutioncenter.ai` points to the main Caddy Server IP.
 
 - Setting up HTTPS for Production Domain
-  - ✅ configured TLS pass-through for comms.solutioncenter.ai to 192.168.10.39:3000
-  - ✅ enabled HTTP connectivity to comms.solutioncenter.ai
-  - setup HTTPS certificate via Express server
-  - backup plan: setting up another Caddy server on the end server as part of the docker stack to enable the certificate
+  - ✅ Caddy service added to `docker-compose.yml` (using host port 3000 for TLS).
+  - ✅ `Caddyfile` created for automatic HTTPS and reverse proxy.
+  - ✅ `app` service configured for HTTP-only within Docker.
+  - ☐ Configure DNS challenge for Let's Encrypt in `./Caddyfile` and provide necessary credentials (e.g., environment variables) to the Caddy container in `docker-compose.yml`.
+  - ☐ **Update main Caddy server's `tls passthrough` to target port `3000` on the Mac mini.**
 
 - Verify Deployment
-  - Confirm application runs at https://comms.solutioncenter.ai
+  - Check internal Caddy logs for successful certificate acquisition: `docker compose logs -f caddy`
+  - Confirm application runs at `https://comms.solutioncenter.ai`
   - Verify login with Azure AD
   - Test report generation functionality
 
@@ -62,6 +83,7 @@ docker compose logs -f
 
 If the application fails to start:
 1. Check Docker logs: `docker compose logs app`
-2. Verify database connection: `docker compose logs db`
-3. CRITICAL: Ensure all environment variables are correctly set in .env
-4. Look for PostgreSQL syntax errors in server logs
+2. Check Caddy logs: `docker compose logs caddy` (especially for certificate errors)
+3. Verify database connection: `docker compose logs db`
+4. CRITICAL: Ensure all environment variables are correctly set in .env, including any needed for Caddy's DNS challenge.
+5. Look for PostgreSQL syntax errors in server logs

@@ -1,0 +1,23 @@
+comms.solutioncenter.ai {
+    # Caddy will automatically handle HTTPS certificates using Let's Encrypt.
+    tls {
+        # IMPORTANT: Because the main Caddy server uses 'tls passthrough',
+        # this internal Caddy instance likely CANNOT solve HTTP-01 or TLS-ALPN-01 challenges.
+        # You will most likely need to configure the DNS challenge method.
+        # Replace <your_dns_provider> with the name of your provider (e.g., cloudflare, route53)
+        # and provide the necessary API credentials via environment variables passed to the Caddy container.
+        # See Caddy documentation for your specific DNS provider module.
+        # Example (uncomment and configure):
+        # dns <your_dns_provider> {env.DNS_API_TOKEN}
+    }
+
+    # Reverse proxy requests to the 'app' service (defined in docker-compose.yml)
+    # on port 3000 within the Docker network.
+    reverse_proxy app:3000
+}
+
+# Optional: Redirect HTTP to HTTPS if desired.
+# If your main Caddy server already handles this, you might not need it here.
+# http://comms.solutioncenter.ai {
+#    redir https://{host}{uri} permanent
+# } 
