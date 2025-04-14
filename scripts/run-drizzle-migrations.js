@@ -2,7 +2,7 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development' });
+require('dotenv').config({ path: '.env' });
 
 async function runDrizzleMigrations() {
   console.log('Running Drizzle schema migrations...');

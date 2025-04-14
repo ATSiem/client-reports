@@ -3,8 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build Commands
-- `npm run dev`: Run development server with Turbopack
-- `docker compose build`: Build and deploy production version
+- `deploy-prod.sh`: Build and deploy production version
 
 ## Database Commands
 - `npm run db:init`: Initialize database
@@ -12,13 +11,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run db:migrate`: Run migrations
 
 ## Environment Configuration
-- Use `.env.development` for dev (npm run dev)
-- Use `.env.production` for prod (docker compose build)
+- Use `.env` for all environment configuration
 
 ## Database Configuration
 - Use PostgreSQL for all database operations
 - Include pgvector for vector search functionality (AI Search)
-- Eliminate any reference to SQLite, even in development environments
 
 ## Test Commands
 - `npm test`: Run all tests

@@ -16,6 +16,10 @@ MAX_RETRIES=30
 RETRY_DELAY=5
 
 echo "Waiting for PostgreSQL at ${DB_HOST}:${DB_PORT} to become available..."
+echo "Connection details: user=${DB_USER}, database=${DB_NAME}"
+echo "Password length: ${#DB_PASSWORD} characters"
+echo "Environment variables:"
+env | grep -e POSTGRES -e DATABASE
 
 # Counter for retry attempts
 RETRIES=0
@@ -39,6 +43,8 @@ echo "PostgreSQL is now available!"
 echo "Creating pgvector extension..."
 PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS vector;" || {
   echo "Failed to create pgvector extension"
+  # Try with more verbose error output
+  PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
   exit 1
 }
 

@@ -57,6 +57,12 @@ export function getMsalInstance(): PublicClientApplication {
     
     console.log('Initializing MSAL with redirect URI:', currentMsalConfig.auth.redirectUri);
     
+    // Check if required configuration is available
+    if (!currentMsalConfig.auth.clientId) {
+      console.error('MSAL configuration error: clientId is missing');
+      throw new Error('Authentication configuration is incomplete. Please check your environment variables.');
+    }
+    
     msalInstance = new PublicClientApplication(currentMsalConfig);
     // Initialize the instance
     msalInstance.initialize().catch(e => {

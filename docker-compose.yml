@@ -5,21 +5,17 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
-    environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/email_agent
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=email_agent
+    env_file:
+      - .env
     depends_on:
-      db:
-        condition: service_healthy
-    # Wait for database, initialize it, and start Next.js
-    command: ["sh", "-c", "./scripts/wait-for-db.sh && node ./scripts/init-database.js && node ./node_modules/next/dist/bin/next start"]
+      - db
   db:
     image: pgvector/pgvector:pg15
+    env_file:
+      - .env
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=email_agent
     ports:
       - "5432:5432"

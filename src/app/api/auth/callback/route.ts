@@ -9,15 +9,24 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
+  const error = url.searchParams.get('error');
+  const errorDescription = url.searchParams.get('error_description');
   
-  console.log('Auth callback received:', { hasCode: !!code, hasState: !!state });
+  console.log('Auth callback received:', { 
+    hasCode: !!code, 
+    hasState: !!state,
+    hasError: !!error,
+    errorDescription: errorDescription || 'none'
+  });
   
   // Get host information
   const host = request.headers.get('host') || '';
   const forwardedHost = request.headers.get('x-forwarded-host') || '';
+  const referer = request.headers.get('referer') || '';
   
   console.log('Host header:', host);
   console.log('X-Forwarded-Host:', forwardedHost);
+  console.log('Referer:', referer);
   
   // Simple redirect URL determination - don't rely on request.url at all
   // since it can show localhost:10000 in Render even though we're in production
@@ -33,6 +42,18 @@ export async function GET(request: Request) {
   );
   
   console.log(`Environment detected: ${isProduction ? 'Production' : 'Development'}`);
+  console.log('Redirect URL base:', redirectUrl.toString());
+  
+  // If there was an error, redirect to login page with error message
+  if (error) {
+    console.error('Auth error:', error, errorDescription);
+    redirectUrl.searchParams.set('authError', error);
+    if (errorDescription) {
+      redirectUrl.searchParams.set('authErrorDescription', errorDescription);
+    }
+    console.log('Redirecting to error URL:', redirectUrl.toString());
+    return NextResponse.redirect(redirectUrl.toString());
+  }
   
   // Add the auth parameters to the hash (MSAL expects them in the hash)
   if (code || state) {

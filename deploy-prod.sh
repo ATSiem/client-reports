@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Load environment variables from .env.production
+# Load environment variables from .env
 set -a # automatically export all variables
-source .env.production
+source .env
 set +a # stop automatically exporting
 
 echo "===== DEPLOYING PRODUCTION APPLICATION ====="
@@ -25,12 +25,38 @@ else
 fi
 
 echo "===== STARTING APPLICATION ====="
-echo "Starting containers with configuration from .env.production..."
+echo "Starting containers with configuration from .env..."
 docker compose up --no-build -d
 
 if [ $? -ne 0 ]; then
   echo "Application failed to start! Check the logs above."
   exit 1
+fi
+
+echo "===== RUNNING DATABASE CHECKS ====="
+echo "Checking database connection inside container..."
+# Use a simpler test that directly checks the database connection
+docker compose exec app node -e "
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  pool.query('SELECT 1 as connected')
+    .then(result => {
+      console.log('Database connection successful!');
+      console.log('Result:', result.rows[0]);
+      pool.end();
+      process.exit(0);
+    })
+    .catch(err => {
+      console.error('Database connection failed:', err.message);
+      process.exit(1);
+    });
+"
+
+if [ $? -eq 0 ]; then
+  echo "Database connection check passed!"
+else
+  echo "⚠️ Database connection check failed! Please verify your database configuration."
+  echo "Continuing with deployment, but the application may not function correctly."
 fi
 
 echo "===== DEPLOYMENT SUCCESSFUL ====="

@@ -73,20 +73,6 @@ export async function GET(request: Request) {
       });
     }
     
-    // Development bypass
-    const isDevelopment = process.env.NODE_ENV !== 'production';
-    const devBypass = isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true';
-    
-    // In development with bypass enabled, always return true
-    if (devBypass) {
-      console.log('Development admin bypass enabled for:', normalizedEmail);
-      return NextResponse.json({ 
-        isAdmin: true,
-        method: 'dev_bypass',
-        debug: debugInfo
-      });
-    }
-    
     // Check if we have a component match even if the exact match failed
     if (!isAdmin && componentMatch) {
       console.log('Admin component match found for:', normalizedEmail);

@@ -86,55 +86,73 @@ export async function GET(request: Request) {
     if (clientId) {
       console.log('Clients API - Fetching single client:', clientId);
       // Fetch a single client, ensuring it belongs to the current user
-      const { rows } = await db.connection.query(
-        `SELECT * FROM clients WHERE id = $1 AND (LOWER(user_id) = LOWER($2) OR user_id IS NULL)`,
-        [clientId, userEmail]
-      );
-      
-      console.log('Clients API - Query result rows:', rows.length);
-      
-      if (rows.length === 0) {
-        console.log('Clients API - Client not found or does not belong to user');
-        return NextResponse.json({ error: "Client not found" }, { status: 404 });
+      try {
+        if (!db.connection) {
+          throw new Error('Database connection not initialized');
+        }
+
+        const { rows } = await db.connection.query(
+          `SELECT * FROM clients WHERE id = $1 AND (LOWER(user_id) = LOWER($2) OR user_id IS NULL)`,
+          [clientId, userEmail]
+        );
+        
+        console.log('Clients API - Query result rows:', rows.length);
+        
+        if (rows.length === 0) {
+          console.log('Clients API - Client not found or does not belong to user');
+          return NextResponse.json({ error: "Client not found" }, { status: 404 });
+        }
+        
+        const client = rows[0];
+        
+        console.log('Clients API - Client found, returning data');
+        // Parse JSON strings back to arrays
+        return NextResponse.json({
+          ...client,
+          domains: typeof client.domains === 'string' ? JSON.parse(client.domains) : client.domains,
+          emails: typeof client.emails === 'string' ? JSON.parse(client.emails) : client.emails,
+        });
+      } catch (error) {
+        console.error('Database query error:', error);
+        return NextResponse.json({ error: "Database error when fetching client" }, { status: 500 });
       }
-      
-      const client = rows[0];
-      
-      console.log('Clients API - Client found, returning data');
-      // Parse JSON strings back to arrays
-      return NextResponse.json({
-        ...client,
-        domains: typeof client.domains === 'string' ? JSON.parse(client.domains) : client.domains,
-        emails: typeof client.emails === 'string' ? JSON.parse(client.emails) : client.emails,
-      });
     } else {
       console.log('Clients API - Fetching all clients for user:', userEmail);
       // Fetch all clients for the current user, including those without a user_id (for backward compatibility)
-      // Using parameterized query for PostgreSQL with case-insensitive comparison
-      const { rows: clients } = await db.connection.query(
-        'SELECT * FROM clients WHERE LOWER(user_id) = LOWER($1) OR user_id IS NULL ORDER BY name ASC',
-        [userEmail]
-      );
-      console.log('Clients API - Found', clients.length, 'clients for user');
-      
-      // Log the user_id values to help debug
-      if (clients.length > 0) {
-        console.log('Clients API - User IDs in returned clients:', clients.map(c => c.user_id));
-      } else {
-        // Try running a more permissive query to see what clients exist
-        const { rows: allClients } = await db.connection.query('SELECT id, name, user_id FROM clients LIMIT 10');
-        console.log('Clients API - Sample of available clients:', allClients);
+      try {
+        if (!db.connection) {
+          throw new Error('Database connection not initialized');
+        }
+        
+        // Using parameterized query for PostgreSQL with case-insensitive comparison
+        const { rows: clients } = await db.connection.query(
+          'SELECT * FROM clients WHERE LOWER(user_id) = LOWER($1) OR user_id IS NULL ORDER BY name ASC',
+          [userEmail]
+        );
+        console.log('Clients API - Found', clients.length, 'clients for user');
+        
+        // Log the user_id values to help debug
+        if (clients.length > 0) {
+          console.log('Clients API - User IDs in returned clients:', clients.map(c => c.user_id));
+        } else {
+          // Try running a more permissive query to see what clients exist
+          const { rows: allClients } = await db.connection.query('SELECT id, name, user_id FROM clients LIMIT 10');
+          console.log('Clients API - Sample of available clients:', allClients);
+        }
+        
+        // Parse JSON strings back to arrays for each client
+        const formattedClients = clients.map(client => ({
+          ...client,
+          domains: typeof client.domains === 'string' ? JSON.parse(client.domains) : client.domains,
+          emails: typeof client.emails === 'string' ? JSON.parse(client.emails) : client.emails,
+        }));
+        
+        console.log('Clients API - Returning formatted clients');
+        return NextResponse.json({ clients: formattedClients });
+      } catch (error) {
+        console.error('Database query error:', error);
+        return NextResponse.json({ error: "Database error when fetching clients" }, { status: 500 });
       }
-      
-      // Parse JSON strings back to arrays for each client
-      const formattedClients = clients.map(client => ({
-        ...client,
-        domains: typeof client.domains === 'string' ? JSON.parse(client.domains) : client.domains,
-        emails: typeof client.emails === 'string' ? JSON.parse(client.emails) : client.emails,
-      }));
-      
-      console.log('Clients API - Returning formatted clients');
-      return NextResponse.json({ clients: formattedClients });
     }
   } catch (error) {
     console.error("Error fetching clients:", error);

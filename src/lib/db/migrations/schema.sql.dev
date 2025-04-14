@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS messages (
   labels JSONB DEFAULT '[]' NOT NULL,
   cc TEXT DEFAULT '',
   bcc TEXT DEFAULT '',
-  embedding VECTOR(1536),
+  embedding TEXT,
   processed_for_vector BOOLEAN DEFAULT FALSE
 );
 

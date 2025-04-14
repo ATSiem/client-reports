@@ -33,7 +33,6 @@ describe('Admin Email Validation', () => {
     // Reset the environment after each test
     process.env = { ...origEnv };
     process.env.NODE_ENV = 'test';
-    process.env.DEV_ADMIN_BYPASS = 'false';
   });
 
   afterAll(() => {
@@ -66,23 +65,5 @@ describe('Admin Email Validation', () => {
   test('should trim whitespace from emails', () => {
     expect(isAdminEmail(' admin@example.com ')).toBe(true);
     expect(isAdminEmail('\tadmin@example.com\n')).toBe(true);
-  });
-
-  test('should handle dev bypass when enabled', () => {
-    // Set up the development bypass
-    process.env.NODE_ENV = 'development';
-    process.env.DEV_ADMIN_BYPASS = 'true';
-    
-    // Non-admin email should be granted access with bypass
-    expect(isAdminEmail('regular@example.com')).toBe(true);
-  });
-
-  test('should not bypass in production even if DEV_ADMIN_BYPASS is true', () => {
-    // Set up production environment
-    process.env.NODE_ENV = 'production';
-    process.env.DEV_ADMIN_BYPASS = 'true';
-    
-    // Non-admin email should not be granted access in production
-    expect(isAdminEmail('regular@example.com')).toBe(false);
   });
 }); 

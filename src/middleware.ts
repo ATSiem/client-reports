@@ -74,13 +74,6 @@ export function isAdminEmail(email: string | null): boolean {
     });
   }
   
-  // In development mode, use the dev bypass if enabled
-  // Explicitly check that we're not in production mode
-  if (!isAdmin && isDevelopment && process.env.NODE_ENV !== 'production' && process.env.DEV_ADMIN_BYPASS === 'true') {
-    console.log('Development bypass enabled, granting admin access');
-    return true;
-  }
-  
   return isAdmin;
 }
 
@@ -88,15 +81,21 @@ export function isAdminEmail(email: string | null): boolean {
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   
+  console.log('Middleware - Processing request for path:', path);
+  
   // Only check authentication for API routes that need protection
   if (PROTECTED_API_PATHS.some(prefix => path.startsWith(prefix))) {
+    console.log('Middleware - Protected API path detected');
+    
     // Check for Authorization header
     const authHeader = request.headers.get('Authorization');
     let accessToken = authHeader ? authHeader.replace('Bearer ', '') : null;
+    console.log('Middleware - Auth header present:', !!authHeader);
     
     // If no token in the Authorization header, check X-MS-TOKEN header
     if (!accessToken) {
       const msTokenHeader = request.headers.get('X-MS-TOKEN');
+      console.log('Middleware - X-MS-TOKEN header present:', !!msTokenHeader);
       if (msTokenHeader) {
         accessToken = msTokenHeader;
       }
@@ -105,12 +104,14 @@ export function middleware(request: NextRequest) {
     // If still no token, try to get from server-side session
     if (!accessToken) {
       accessToken = getUserAccessToken();
+      console.log('Middleware - Token from server-side session:', accessToken ? 'present' : 'missing');
     }
     
     // Check cookies as a last resort
     if (!accessToken) {
       const cookies = request.cookies;
       const msGraphToken = cookies.get('msGraphToken');
+      console.log('Middleware - msGraphToken cookie present:', !!msGraphToken);
       if (msGraphToken) {
         accessToken = msGraphToken.value;
       }
@@ -118,6 +119,7 @@ export function middleware(request: NextRequest) {
     
     // If no token found, user is not authenticated
     if (!accessToken) {
+      console.log('Middleware - No token found, returning 401');
       return NextResponse.json(
         { 
           error: "Authentication required",
@@ -131,6 +133,8 @@ export function middleware(request: NextRequest) {
     let userEmail = request.headers.get('x-user-email') || 
                     request.headers.get('X-User-Email') || 
                     request.headers.get('userEmail');
+    
+    console.log('Middleware - User email header present:', !!userEmail);
     
     // Normalize email to lowercase
     if (userEmail) {
@@ -168,10 +172,6 @@ export function middleware(request: NextRequest) {
         
         if (isAdminCheckEndpoint) {
           // Allow access for diagnostics
-        }
-        // In development mode with DEV_ADMIN_BYPASS=true, allow access for testing
-        else if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
-          // Admin access granted via dev bypass
         } else if (!isAdminEmail(userEmail)) {
           return NextResponse.json(
             {

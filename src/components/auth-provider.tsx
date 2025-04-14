@@ -42,6 +42,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AccountInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<boolean>(false);
+
+  // Initial check for environment configuration
+  useEffect(() => {
+    const missingConfig = !process.env.NEXT_PUBLIC_AZURE_CLIENT_ID || 
+                         !process.env.NEXT_PUBLIC_AZURE_TENANT_ID || 
+                         !process.env.NEXT_PUBLIC_AZURE_REDIRECT_URI;
+    
+    if (missingConfig) {
+      console.error('Missing authentication configuration');
+      setConfigError(true);
+      setError('Application configuration error. Please check environment variables.');
+      setIsLoading(false);
+    }
+  }, []);
 
   // Function to validate user's email domain
   const validateUserDomain = (email: string | undefined): boolean => {
@@ -83,117 +98,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize authentication
   useEffect(() => {
-    // Handle redirects from Microsoft login
-    if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('code=')) {
-      console.log('Auth code detected in URL hash:', window.location.hash);
-      
-      // For client-reports.onrender.com - redirect all root URLs with code to the callback
-      const hostname = window.location.hostname;
-      
-      if (hostname === 'client-reports.onrender.com') {
-        if (window.location.pathname === '/') {
-          console.log('Production site: auth code in root path, redirecting to callback URL');
-          
-          // Store the hash for later use
-          sessionStorage.setItem('msalAuthHash', window.location.hash);
-          
-          // Redirect to the callback URL
-          window.location.href = 'https://client-reports.onrender.com/api/auth/callback';
-          return;
-        }
-      }
-      
-      // For localhost - handle both port 3000 and any other port
-      if (hostname === 'localhost') {
-        // If on non-standard port with auth code, redirect to port 3000
-        if (window.location.port !== '3000') {
-          console.log('Development: auth code on non-standard port, redirecting to port 3000');
-          
-          // Store the hash for later use
-          sessionStorage.setItem('msalAuthHash', window.location.hash);
-          
-          // Redirect to the standard development URL
-          window.location.href = 'http://localhost:3000/';
-          return;
-        }
-      }
-      
-      // Log what's happening for debugging
-      console.log('Auth code in URL, continuing normal MSAL flow');
+    // Skip initialization if configuration is missing
+    if (configError) {
+      return;
     }
     
-    const initialize = async () => {
-      setIsLoading(true);
-      setError(null);
-      
-      // Check if we have a saved hash from a previous redirect
-      const savedHash = sessionStorage.getItem('msalAuthHash');
-      
-      if (savedHash) {
-        console.log('Found saved auth hash, applying it to current URL');
-        
-        // Always apply the saved hash if present - this ensures the auth code is available
-        window.location.hash = savedHash;
-        
-        // Clear the saved hash to prevent reuse
-        sessionStorage.removeItem('msalAuthHash');
-        
-        // Add a small delay to ensure hash is processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
+    // Handle redirects from Microsoft login
+    const handleAuth = async () => {
       try {
-        // Check for the hash in the URL which indicates a redirect from Microsoft
-        const isRedirectCallback = window.location.hash && 
-          (window.location.hash.includes('id_token=') || 
-           window.location.hash.includes('access_token=') || 
-           window.location.hash.includes('code='));
+        // Check for error parameters in the URL (from auth callback redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        const authError = urlParams.get('authError');
+        const authErrorDescription = urlParams.get('authErrorDescription');
         
-        console.log('Initializing auth with hash present:', isRedirectCallback);
-        
-        // Add a more permissive safety check for auth loops
-        // but still prevent continuous redirect loops
-        const lastAuthAttempt = sessionStorage.getItem('lastAuthAttempt');
-        const authAttemptCount = parseInt(sessionStorage.getItem('authAttemptCount') || '0');
-        const now = Date.now();
-        const ONE_SECOND = 1000;
-        
-        if (isRedirectCallback && lastAuthAttempt) {
-          const timeSinceLastAttempt = now - parseInt(lastAuthAttempt);
-          
-          // If we've had multiple attempts in very quick succession, it may be a loop
-          if (timeSinceLastAttempt < ONE_SECOND && authAttemptCount > 5) {
-            console.warn('Detected potential auth loop - too many attempts in quick succession');
-            console.warn('Resetting auth state to break the loop');
-            
-            // Clear all auth-related storage to break the loop
-            sessionStorage.removeItem('msalAuthHash');
-            sessionStorage.removeItem('lastAuthAttempt');
-            sessionStorage.removeItem('authAttemptCount');
-            
-            // Clean URL
-            if (window.history) {
-              window.history.replaceState({}, document.title, window.location.pathname);
-            }
-            
-            setIsLoading(false);
-            return;
-          }
-          
-          // Update the attempt count
-          sessionStorage.setItem('authAttemptCount', (authAttemptCount + 1).toString());
-        } else {
-          // First attempt or not a redirect callback
-          sessionStorage.setItem('authAttemptCount', '1');
+        if (authError) {
+          console.error('Auth error from callback:', authError, authErrorDescription);
+          setError(`Authentication error: ${authError}${authErrorDescription ? ` - ${authErrorDescription}` : ''}`);
+          setIsLoading(false);
+          return;
         }
         
-        // Record this attempt
-        if (isRedirectCallback) {
-          sessionStorage.setItem('lastAuthAttempt', now.toString());
-        }
+        // Check for auth hash
+        console.log('Current URL:', window.location.href);
+        console.log('URL hash presence:', !!window.location.hash);
         
-        // Handle redirect result (if we're returning from auth)
+        // Process the authentication result
         const result = await handleRedirectResult();
+        console.log('Auth redirect result:', result ? 'Present' : 'None');
         
         if (result) {
           // Successfully logged in via redirect
@@ -228,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           addUserEmailToHeaders(userEmail);
           
           // Clean URL
-          if (isRedirectCallback && window.history) {
+          if (result && window.history) {
             console.log('Cleaning URL after successful authentication');
             window.history.replaceState({}, document.title, window.location.pathname);
             
@@ -334,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           
           // Clean URL if it has authorization code
-          if (isRedirectCallback && window.history) {
+          if (result && window.history) {
             console.log('Cleaning URL after authentication');
             window.history.replaceState({}, document.title, window.location.pathname);
             
@@ -393,11 +324,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     
-    initialize();
-  }, []);
+    handleAuth();
+  }, [configError]);
 
   // Login function
   const login = async () => {
+    // Don't attempt login if configuration is missing
+    if (configError) {
+      setError('Authentication is not available due to missing configuration');
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     
@@ -513,7 +450,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       error,
       accessToken
     }}>
-      {children}
+      {configError && !isLoading ? (
+        <div className="p-4 m-4 bg-red-100 border border-red-400 text-red-700 rounded">
+          <p>Authentication configuration error. Please ensure environment variables are set correctly.</p>
+        </div>
+      ) : children}
     </AuthContext.Provider>
   );
 }

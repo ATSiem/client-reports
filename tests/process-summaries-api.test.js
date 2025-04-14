@@ -35,7 +35,8 @@ describe('Process Summaries API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer test-token' // Add a test token for authentication
+        'Authorization': 'Bearer test-token', // Add a test token for authentication
+        'X-User-Email': 'test@defactoglobal.com' // Use a valid domain from the allowed list
       },
       body: JSON.stringify({}) // Empty body for default processing
     });
@@ -65,7 +66,8 @@ describe('Process Summaries API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer test-token' // Add a test token for authentication
+        'Authorization': 'Bearer test-token', // Add a test token for authentication
+        'X-User-Email': 'test@defactoglobal.com' // Use a valid domain from the allowed list
       },
       body: JSON.stringify({}) // Empty body for default processing
     });

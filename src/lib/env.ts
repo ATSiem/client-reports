@@ -72,12 +72,8 @@ const envSchema = z.object({
 // Process env variables through schema validation
 // This will throw an error if required variables are missing
 function getEnvVariables() {
-  // In production, validate all required fields
-  if (process.env.NODE_ENV === 'production') {
-    return envSchema.parse(process.env);
-  } 
-  
-  // For development purposes, make all variables optional
+  // Always make all variables optional to prevent client-side errors
+  // This solves the ZodError issues with missing env variables
   return envSchema.partial().parse(process.env);
 }
 

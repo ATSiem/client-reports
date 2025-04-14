@@ -42,7 +42,6 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/ensure-node-version.sh ./
-COPY --from=builder /app/.env.production ./
 
 # Make the ensure-node-version.sh script executable
 RUN chmod +x ./ensure-node-version.sh

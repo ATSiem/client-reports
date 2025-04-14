@@ -13,12 +13,16 @@ console.log('Current working directory:', process.cwd());
 
 // Load environment variables with more debug output
 console.log('Loading environment variables...');
-let loaded = false;
+let loaded;
 try {
-  loaded = dotenv.config({ path: '.env.development' });
-  console.log('Dotenv loaded:', loaded);
+  loaded = dotenv.config({ path: '.env' });
+  if (loaded.error) {
+    console.error('Error loading .env:', loaded.error);
+    process.exit(1);
+  }
 } catch (e) {
-  console.error('Error loading .env.development:', e);
+  console.error('Error loading .env:', e);
+  process.exit(1);
 }
 
 // Make sure we have DATABASE_URL

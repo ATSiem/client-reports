@@ -21,8 +21,8 @@ if (!process.env.NODE_ENV) {
 // Only run on macOS and in development mode
 if (process.env.NODE_ENV === 'development' && os.platform() === 'darwin') {
   try {
-    // Load environment variables from .env.development
-    const envPath = path.resolve(process.cwd(), '.env.development');
+    // Load environment variables from .env
+    const envPath = path.resolve(process.cwd(), '.env');
     if (fs.existsSync(envPath)) {
       dotenv.config({ path: envPath });
     }

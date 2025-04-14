@@ -1,6 +1,6 @@
 // Script to verify client updates in the database
 const { Pool } = require('pg');
-require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development' });
+require('dotenv').config({ path: '.env' });
 
 // Get database connection string
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/email_agent';

@@ -89,40 +89,14 @@ export default function FeedbackAnalyticsPage() {
           const data = await response.json();
           console.log('Admin check result:', data);
           
-          // In development with bypass enabled, always allow
-          const isDevelopment = process.env.NODE_ENV !== 'production';
-          if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
-            console.log('Development admin bypass: enabled');
-            setIsAdmin(true);
-            return;
-          }
-          
           // Set admin status based on the API response
           setIsAdmin(data.isAdmin);
         } else {
           console.error('Admin check failed:', response.status);
-          
-          // In development, we might want to allow access even if the check fails
-          const isDevelopment = process.env.NODE_ENV !== 'production';
-          if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
-            console.log('Development admin bypass after API error: enabled');
-            setIsAdmin(true);
-            return;
-          }
-          
           setIsAdmin(false);
         }
       } catch (err) {
         console.error('Error checking admin status:', err);
-        
-        // In development, we might want to allow access even if the check fails
-        const isDevelopment = process.env.NODE_ENV !== 'production';
-        if (isDevelopment && process.env.DEV_ADMIN_BYPASS === 'true') {
-          console.log('Development admin bypass after error: enabled');
-          setIsAdmin(true);
-          return;
-        }
-        
         setIsAdmin(false);
       }
     }

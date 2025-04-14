@@ -2,7 +2,7 @@
 const { Pool } = require('pg');
 const { execSync } = require('child_process');
 const path = require('path');
-require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development' });
+require('dotenv').config();
 
 console.log('Initializing PostgreSQL database...');
 console.log('Database URL:', process.env.DATABASE_URL?.replace(/(:.*@)/, ':****@'));
