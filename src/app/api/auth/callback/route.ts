@@ -28,18 +28,17 @@ export async function GET(request: Request) {
   console.log('X-Forwarded-Host:', forwardedHost);
   console.log('Referer:', referer);
   
-  // Simple redirect URL determination - don't rely on request.url at all
-  // since it can show localhost:10000 in Render even though we're in production
-  const isProduction = host.includes('client-reports.onrender.com') || 
-                       forwardedHost.includes('client-reports.onrender.com') || 
-                       process.env.RENDER === 'true';
+  // Simple redirect URL determination
+  const isProduction = host.includes('comms.solutioncenter.ai') || 
+                       forwardedHost.includes('comms.solutioncenter.ai');
+  
+  // Get the appropriate base URL
+  const baseUrl = isProduction
+    ? 'https://comms.solutioncenter.ai'
+    : 'http://localhost:3000';
   
   // Create the redirect URL
-  const redirectUrl = new URL(
-    isProduction
-      ? 'https://client-reports.onrender.com'
-      : 'http://localhost:3000'
-  );
+  const redirectUrl = new URL(baseUrl);
   
   console.log(`Environment detected: ${isProduction ? 'Production' : 'Development'}`);
   console.log('Redirect URL base:', redirectUrl.toString());

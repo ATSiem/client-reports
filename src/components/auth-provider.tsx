@@ -152,8 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Store the token in sessionStorage for Graph API use
           sessionStorage.setItem('msGraphToken', result.accessToken);
           
-          // Also set a cookie for API routes
-          document.cookie = `msGraphToken=${result.accessToken}; path=/; secure; max-age=3600`;
+          // Also set a cookie for API routes with SameSite attribute
+          document.cookie = `msGraphToken=${result.accessToken}; path=/; SameSite=Lax; secure; max-age=3600`;
           
           // Add user email to headers
           addUserEmailToHeaders(userEmail);
@@ -218,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setAccessToken(token);
                 setIsAuthenticated(true);
                 sessionStorage.setItem('msGraphToken', token);
-                document.cookie = `msGraphToken=${token}; path=/; secure; max-age=3600`;
+                document.cookie = `msGraphToken=${token}; path=/; SameSite=Lax; secure; max-age=3600`;
                 
                 // Add user email to headers
                 addUserEmailToHeaders(userEmail);
@@ -254,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setAccessToken(token);
               setIsAuthenticated(true);
               sessionStorage.setItem('msGraphToken', token);
-              document.cookie = `msGraphToken=${token}; path=/; secure; max-age=3600`;
+              document.cookie = `msGraphToken=${token}; path=/; SameSite=Lax; secure; max-age=3600`;
               
               // Add user email to headers
               addUserEmailToHeaders(userEmail);

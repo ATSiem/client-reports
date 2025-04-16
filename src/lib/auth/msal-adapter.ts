@@ -35,7 +35,21 @@ const msalConfig: Configuration = {
   },
   cache: {
     cacheLocation: 'sessionStorage',
-    storeAuthStateInCookie: false,
+    storeAuthStateInCookie: true,
+  },
+  system: {
+    allowRedirectInIframe: true,
+    windowHashTimeout: 9000,
+    iframeHashTimeout: 9000,
+    navigateFrameWait: 500,
+    loggerOptions: {
+      loggerCallback: (level, message, containsPii) => {
+        if (!containsPii) {
+          console.log(`MSAL (${level}): ${message}`);
+        }
+      },
+      logLevel: 3, // Info level
+    }
   }
 };
 
@@ -98,10 +112,8 @@ export async function logoutFromMicrosoft(): Promise<void> {
   await instance.initialize();
   
   // Use logoutRedirect with postLogoutRedirectUri set to current page
-  // and mainWindowRedirectUri to prevent full Microsoft logout
   return instance.logoutRedirect({
     postLogoutRedirectUri: window.location.origin,
-    mainWindowRedirectUri: window.location.origin,
     onRedirectNavigate: () => {
       // Prevent actual redirect to Microsoft - we'll handle it ourselves
       return false;

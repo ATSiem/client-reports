@@ -9,7 +9,8 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
   db:
     image: pgvector/pgvector:pg15
     env_file:
@@ -28,7 +29,9 @@ services:
       timeout: 5s
       retries: 5
   caddy:
-    image: caddy:2 # Use a specific version or latest
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     restart: unless-stopped
     ports:
       # Map host port 3000 to container port 443 (for HTTPS via passthrough)
@@ -38,12 +41,11 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile # Mount the Caddyfile
       - caddy_data:/data               # Persist certificates and Caddy state
-    # Pass environment variables needed for DNS challenge (e.g., DNS_API_TOKEN)
-    # env_file:
-    #   - .env
-    # Or using environment:
-    # environment:
-    #   - DNS_API_TOKEN=${DNS_API_TOKEN}
+    # Pass environment variables needed for DNS challenge
+    env_file:
+      - .env
+    environment:
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     depends_on:
       - app # Wait for the app service to be ready (optional but recommended)
 
