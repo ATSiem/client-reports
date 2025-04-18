@@ -124,6 +124,15 @@ describe('Database Initialization', () => {
       `);
       expect(result2.rows.length).toBe(1);
       expect(result2.rows[0].column_name).toBe('user_id');
+
+      // Check that messages table has user_id column
+      const result3 = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'messages' AND column_name = 'user_id'
+      `);
+      expect(result3.rows.length).toBe(1);
+      expect(result3.rows[0].column_name).toBe('user_id');
     });
     
     test('should handle existing database with missing user_id column', async () => {
@@ -165,6 +174,46 @@ describe('Database Initialization', () => {
         console.error('PostgreSQL test error:', err);
         throw err;
       }
+    });
+
+    test('should add user_id column to messages table if missing (regression)', async () => {
+      if (!pool) {
+        // Skip test if PostgreSQL setup failed
+        console.log('Skipping test - PostgreSQL setup failed');
+        return;
+      }
+      // Drop and recreate messages table without user_id
+      await pool.query('DROP TABLE IF EXISTS messages CASCADE');
+      await pool.query(`
+        CREATE TABLE messages (
+          id TEXT PRIMARY KEY,
+          subject TEXT NOT NULL,
+          "from" TEXT NOT NULL,
+          "to" TEXT NOT NULL,
+          date TEXT NOT NULL,
+          body TEXT NOT NULL,
+          attachments TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          summary TEXT NOT NULL,
+          labels JSONB NOT NULL,
+          cc TEXT DEFAULT '',
+          bcc TEXT DEFAULT '',
+          processed_for_vector BOOLEAN DEFAULT FALSE
+        )
+      `);
+      // Run the initialization script which should add the user_id column
+      execSync('node scripts/init-database.js', {
+        env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+      });
+      // Check if user_id column was added
+      const result = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'messages' AND column_name = 'user_id'
+      `);
+      expect(result.rows.length).toBeGreaterThan(0);
+      expect(result.rows[0].column_name).toBe('user_id');
     });
   }
 }); 

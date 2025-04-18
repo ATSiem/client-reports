@@ -52,6 +52,7 @@ interface EmailParams {
   maxResults?: number;
   searchQuery?: string;  // New: Support semantic search
   useVectorSearch?: boolean; // New: Flag to enable vector search
+  userId?: string; // Add userId for secure filtering
 }
 
 // Function to normalize domain format for consistent matching
@@ -70,6 +71,10 @@ const normalizeDomain = (domain: string): string => {
 
 // Function to get emails from both database and Microsoft Graph API
 export async function getClientEmails(params: EmailParams) {
+  let userId = params.userId;
+  if (!userId) {
+    userId = await getUserEmail();
+  }
   try {
     console.log('EmailFetcher - Fetching client emails with params:', params);
     
@@ -117,7 +122,8 @@ export async function getClientEmails(params: EmailParams) {
     // Use expanded domains for queries
     const enhancedParams = {
       ...params,
-      clientDomains: expandedDomains
+      clientDomains: expandedDomains,
+      userId
     };
     
     console.log('EmailFetcher - Enhanced client domains:', expandedDomains);
@@ -217,141 +223,129 @@ export async function getClientEmails(params: EmailParams) {
 
 // Function to get client emails from database using SQL
 async function getClientEmailsFromDatabase(params: EmailParams) {
-  try {
-    const { 
-      startDate, 
-      endDate, 
-      clientDomains = [], 
-      clientEmails = [], 
-      maxResults = 1000,
-      searchQuery = ""  // Add support for standard keyword search
-    } = params;
-    
-    console.log('EmailFetcher - Fetching from database with date range:');
-    console.log(`  - Start date: ${startDate}`);
-    console.log(`  - End date: ${endDate}`);
-    if (searchQuery) {
-      console.log(`  - Search query: "${searchQuery}"`);
-    }
-    
-    // First, get the user's own email
-    // For the database, we need to get it from the Graph API first
-    let userEmail = '';
-    try {
-      const client = getGraphClient();
-      if (client) {
-        const userInfo = await client.api('/me').select('mail,userPrincipalName').get();
-        userEmail = userInfo.mail || userInfo.userPrincipalName || '';
-        console.log(`EmailFetcher - User email for database query: ${userEmail}`);
-      }
-    } catch (error) {
-      console.error('EmailFetcher - Error getting user email for database query:', error);
-      // Continue with empty userEmail - will fall back to old behavior
-    }
-    
-    // Check if cc and bcc columns exist in the database
-    let hasCcBccColumns = false;
-    try {
-      const tableInfoResult = await db.connection.query(`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'messages' AND column_name IN ('cc', 'bcc')
-      `);
-      hasCcBccColumns = tableInfoResult.rows.length === 2;
-      console.log(`EmailFetcher - Database has cc/bcc columns: ${hasCcBccColumns}`);
-    } catch (error) {
-      console.error('EmailFetcher - Error checking table schema for cc/bcc columns:', error);
-    }
-    
-    // Build SQL query conditions
-    let domainConditions = '';
-    // Initialize query params array here with the date values
-    const queryParams = [startDate, endDate];
-    
-    if (clientDomains.length > 0) {
-      // Normalize all domains for consistent matching
-      const normalizedDomains = clientDomains.map(normalizeDomain);
-      
-      const domainFilters = normalizedDomains.map((domain, i) => {
-        const sanitizedDomain = domain.replace(/'/g, "''");  // SQL escape single quotes
-        
-        // Create more precise domain matching conditions
-        // Match exact domain after @ or subdomain ending with .domain
-        return `(
-          "from" LIKE '%@${sanitizedDomain}%' OR 
-          "from" LIKE '%@%.${sanitizedDomain}%' OR 
-          "to" LIKE '%@${sanitizedDomain}%' OR 
-          "to" LIKE '%@%.${sanitizedDomain}%'
-          ${hasCcBccColumns ? 
-            ` OR "cc" LIKE '%@${sanitizedDomain}%' OR 
-              "cc" LIKE '%@%.${sanitizedDomain}%' OR 
-              "bcc" LIKE '%@${sanitizedDomain}%' OR 
-              "bcc" LIKE '%@%.${sanitizedDomain}%'` 
-            : ''}
-        )`;
-      }).join(' OR ');
-      
-      if (domainFilters) {
-        domainConditions = ` OR (${domainFilters})`;
-      }
-    }
-    
-    // Build client email conditions with checks against both FROM and TO fields
-    const emailConditions = [];
-    
-    const userEmailFromGraph = await getUserEmail();
-    if (userEmailFromGraph) {
-      const sanitizedUserEmail = userEmailFromGraph.replace(/'/g, "''");  // SQL escape single quotes
-      
-      // Add conditions for each client email
-      clientEmails.forEach(clientEmail => {
-        const sanitizedClientEmail = clientEmail.replace(/'/g, "''");  // SQL escape single quotes
-        if (hasCcBccColumns) {
-          // User to client
-          emailConditions.push(`("from" = '${sanitizedUserEmail}' AND ("to" = '${sanitizedClientEmail}' OR "cc" LIKE '%${sanitizedClientEmail}%' OR "bcc" LIKE '%${sanitizedClientEmail}%'))`);
-          // Client to user
-          emailConditions.push(`("from" = '${sanitizedClientEmail}' AND ("to" = '${sanitizedUserEmail}' OR "cc" LIKE '%${sanitizedUserEmail}%' OR "bcc" LIKE '%${sanitizedUserEmail}%'))`);
-        } else {
-          // User to client
-          emailConditions.push(`("from" = '${sanitizedUserEmail}' AND "to" = '${sanitizedClientEmail}')`);
-          // Client to user
-          emailConditions.push(`("from" = '${sanitizedClientEmail}' AND "to" = '${sanitizedUserEmail}')`);
-        }
-      });
-    }
-    
-    // Combine all email conditions
-    const emailFilter = emailConditions.length > 0 ? `(${emailConditions.join(' OR ')})` : '1=1'; // Default condition that's always true
-    
-    // Final WHERE clause combining date range, email conditions, and domain conditions
-    const whereClause = `WHERE date >= $1 AND date <= $2 AND (${emailFilter}${domainConditions})`;
-    
-    // Full query with proper ordering and limit
-    const query = `
-      SELECT * FROM messages 
-      ${whereClause}
-      ORDER BY date DESC
-      LIMIT $3
-    `;
-    
-    console.log('EmailFetcher - Database query:', query);
-    console.log('EmailFetcher - Database query params:', queryParams);
-    
-    // Add max results parameter
-    queryParams.push(maxResults.toString());
-    
-    // Execute the query using PostgreSQL syntax with $ parameter placeholders
-    const { rows } = await db.connection.query(query, queryParams);
-    
-    // Add source information to emails for weighting
-    return rows.map((email: any) => ({
-      ...email,
-      source: 'database'
-    }));
-  } catch (error) {
-    console.error('EmailFetcher - Error getting emails from database:', error);
-    return [];
+  const { startDate, endDate, clientDomains = [], clientEmails = [], maxResults = 1000, searchQuery = "", userId } = params;
+  
+  console.log('EmailFetcher - Fetching from database with date range:');
+  console.log(`  - Start date: ${startDate}`);
+  console.log(`  - End date: ${endDate}`);
+  if (searchQuery) {
+    console.log(`  - Search query: "${searchQuery}"`);
   }
+  
+  // First, get the user's own email
+  // For the database, we need to get it from the Graph API first
+  let userEmail = '';
+  try {
+    const client = getGraphClient();
+    if (client) {
+      const userInfo = await client.api('/me').select('mail,userPrincipalName').get();
+      userEmail = userInfo.mail || userInfo.userPrincipalName || '';
+      console.log(`EmailFetcher - User email for database query: ${userEmail}`);
+    }
+  } catch (error) {
+    console.error('EmailFetcher - Error getting user email for database query:', error);
+    // Continue with empty userEmail - will fall back to old behavior
+  }
+  
+  // Check if cc and bcc columns exist in the database
+  let hasCcBccColumns = false;
+  try {
+    const tableInfoResult = await db.connection.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'messages' AND column_name IN ('cc', 'bcc')
+    `);
+    hasCcBccColumns = tableInfoResult.rows.length === 2;
+    console.log(`EmailFetcher - Database has cc/bcc columns: ${hasCcBccColumns}`);
+  } catch (error) {
+    console.error('EmailFetcher - Error checking table schema for cc/bcc columns:', error);
+  }
+  
+  // Build SQL query conditions
+  let domainConditions = '';
+  // Initialize query params array here with the date values
+  const queryParams = [startDate, endDate, userId];
+  
+  if (clientDomains.length > 0) {
+    // Normalize all domains for consistent matching
+    const normalizedDomains = clientDomains.map(normalizeDomain);
+    
+    const domainFilters = normalizedDomains.map((domain, i) => {
+      const sanitizedDomain = domain.replace(/'/g, "''");  // SQL escape single quotes
+      
+      // Create more precise domain matching conditions
+      // Match exact domain after @ or subdomain ending with .domain
+      return `(
+        "from" LIKE '%@${sanitizedDomain}%' OR 
+        "from" LIKE '%@%.${sanitizedDomain}%' OR 
+        "to" LIKE '%@${sanitizedDomain}%' OR 
+        "to" LIKE '%@%.${sanitizedDomain}%'
+        ${hasCcBccColumns ? 
+          ` OR "cc" LIKE '%@${sanitizedDomain}%' OR 
+            "cc" LIKE '%@%.${sanitizedDomain}%' OR 
+            "bcc" LIKE '%@${sanitizedDomain}%' OR 
+            "bcc" LIKE '%@%.${sanitizedDomain}%'` 
+          : ''}
+      )`;
+    }).join(' OR ');
+    
+    if (domainFilters) {
+      domainConditions = ` OR (${domainFilters})`;
+    }
+  }
+  
+  // Build client email conditions with checks against both FROM and TO fields
+  const emailConditions = [];
+  
+  const userEmailFromGraph = await getUserEmail();
+  if (userEmailFromGraph) {
+    const sanitizedUserEmail = userEmailFromGraph.replace(/'/g, "''");  // SQL escape single quotes
+    
+    // Add conditions for each client email
+    clientEmails.forEach(clientEmail => {
+      const sanitizedClientEmail = clientEmail.replace(/'/g, "''");  // SQL escape single quotes
+      if (hasCcBccColumns) {
+        // User to client
+        emailConditions.push(`("from" = '${sanitizedUserEmail}' AND ("to" = '${sanitizedClientEmail}' OR "cc" LIKE '%${sanitizedClientEmail}%' OR "bcc" LIKE '%${sanitizedClientEmail}%'))`);
+        // Client to user
+        emailConditions.push(`("from" = '${sanitizedClientEmail}' AND ("to" = '${sanitizedUserEmail}' OR "cc" LIKE '%${sanitizedUserEmail}%' OR "bcc" LIKE '%${sanitizedUserEmail}%'))`);
+      } else {
+        // User to client
+        emailConditions.push(`("from" = '${sanitizedUserEmail}' AND "to" = '${sanitizedClientEmail}')`);
+        // Client to user
+        emailConditions.push(`("from" = '${sanitizedClientEmail}' AND "to" = '${sanitizedUserEmail}')`);
+      }
+    });
+  }
+  
+  // Combine all email conditions
+  const emailFilter = emailConditions.length > 0 ? `(${emailConditions.join(' OR ')})` : '1=1'; // Default condition that's always true
+  
+  // Final WHERE clause combining date range, email conditions, and domain conditions
+  const whereClause = `WHERE date >= $1 AND date <= $2 AND (${emailFilter}${domainConditions}) AND user_id = $${queryParams.length}`;
+  
+  // Full query with proper ordering and limit
+  const query = `
+    SELECT * FROM messages 
+    ${whereClause}
+    ORDER BY date DESC
+    LIMIT $${queryParams.length + 1}
+  `;
+  
+  console.log('EmailFetcher - Database query:', query);
+  console.log('EmailFetcher - Database query params:', queryParams);
+  
+  // Add max results parameter
+  queryParams.push(maxResults.toString());
+  
+  // Execute the query using PostgreSQL syntax with $ parameter placeholders
+  const { rows } = await db.connection.query(query, queryParams);
+  
+  // Add source information to emails for weighting
+  return rows.map((email: any) => ({
+    ...email,
+    source: 'database'
+  }));
 }
 
 // Function to get client emails from Microsoft Graph API
@@ -635,7 +629,8 @@ async function getClientEmailsFromGraph(params: EmailParams) {
         summary: '',
         labels: JSON.stringify([]),
         attachments: JSON.stringify([]),
-        source: source // Add source field
+        source: source, // Add source field
+        user_id: params.userId
       };
       
       // Add CC and BCC fields if the database supports them
@@ -674,10 +669,10 @@ async function getClientEmailsFromGraph(params: EmailParams) {
           
           if (rows.length === 0) {
             // Create columns string and values placeholders dynamically based on columns
-            const columnsArr = ['id', 'subject', 'from', 'to', 'date', 'body', 'attachments', 'summary', 'labels', 'processed_for_vector'];
+            const columnsArr = ['id', 'subject', 'from', 'to', 'date', 'body', 'attachments', 'summary', 'labels', 'processed_for_vector', 'user_id'];
             let paramIndex = 1; // PostgreSQL uses $1, $2, etc.
             let valuesArr = [`$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, 
-                           `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`];
+                           `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`, `$${paramIndex++}`];
             
             // Build params array
             const params = [
@@ -690,7 +685,8 @@ async function getClientEmailsFromGraph(params: EmailParams) {
               email.attachments,
               email.summary,
               email.labels,
-              false // processed_for_vector
+              false, // processed_for_vector
+              email.user_id
             ];
             
             // Add cc and bcc if they exist in the schema

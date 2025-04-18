@@ -4,11 +4,12 @@ import { messages } from "~/lib/db/schema";
 import Link from "next/link";
 import { cn } from "~/lib/utils";
 
-const getMessages = async () => {
+const getMessages = async (userId?: string) => {
   try {
     const allMessages = await db
       .select()
       .from(messages)
+      .where(userId ? { userId } : {})
       .orderBy(messages.createdAt);
 
     return allMessages;

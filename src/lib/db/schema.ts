@@ -23,6 +23,7 @@ export const messages = pgTable("messages", {
   // For vector search
   embedding: customVector("embedding", { dimensions: 1536 }),
   processedForVector: boolean("processed_for_vector").default(false),
+  userId: text("user_id"), // Associate messages with specific users
 });
 
 export const clients = pgTable("clients", {

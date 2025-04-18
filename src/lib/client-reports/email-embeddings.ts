@@ -204,6 +204,7 @@ export async function findSimilarEmails(query: string, options: {
   endDate?: string;
   clientDomains?: string[];
   clientEmails?: string[];
+  userId?: string;
 }) {
   try {
     const {
@@ -211,7 +212,8 @@ export async function findSimilarEmails(query: string, options: {
       startDate,
       endDate,
       clientDomains = [],
-      clientEmails = []
+      clientEmails = [],
+      userId
     } = options;
 
     // Check if vector extension is properly set up
@@ -330,12 +332,14 @@ export async function findSimilarEmails(query: string, options: {
       FROM messages
       WHERE embedding IS NOT NULL ${dateFilter}
         AND (${emailFilter}${domainConditions})
+        AND user_id = $${paramIndex+2}
       ORDER BY similarity ASC
-      LIMIT $${paramIndex+1}
+      LIMIT $${paramIndex+3}
     `;
     
     // Add vector embedding and limit parameters
     params.push(queryEmbedding);
+    params.push(userId);
     params.push(limit);
     
     console.log('EmailEmbeddings - Vector search query:', vectorSearchQuery);

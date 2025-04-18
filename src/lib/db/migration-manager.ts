@@ -2,6 +2,7 @@ import { db } from './index';
 import { addCcBccColumns } from './migrations/add_cc_bcc_columns';
 import { addExamplePromptColumn } from './migrations/add_example_prompt_column';
 import { addProcessedForVectorColumn } from './migrations/add_processed_for_vector_column';
+import { addUserIdToMessages } from './migrations/add_user_id_to_messages';
 import * as schema from './schema';
 
 // Function to initialize database tables from schema
@@ -159,7 +160,8 @@ export async function runMigrations() {
     const migrations = [
       { name: 'add_cc_bcc_columns', fn: addCcBccColumns },
       { name: 'add_example_prompt_column', fn: addExamplePromptColumn },
-      { name: 'add_processed_for_vector_column', fn: addProcessedForVectorColumn }
+      { name: 'add_processed_for_vector_column', fn: addProcessedForVectorColumn },
+      { name: 'add_user_id_to_messages', fn: addUserIdToMessages },
     ];
     
     // Run migrations that haven't been applied yet

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS messages (
   cc TEXT DEFAULT '',
   bcc TEXT DEFAULT '',
   embedding VECTOR(1536),
-  processed_for_vector BOOLEAN DEFAULT FALSE
+  processed_for_vector BOOLEAN DEFAULT FALSE,
+  user_id TEXT
 );
 
 -- Clients table for storing client information

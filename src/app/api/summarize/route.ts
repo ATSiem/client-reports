@@ -5,7 +5,7 @@ import { z } from "zod";
 import { db } from "~/lib/db";
 import { clients } from "~/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getUserAccessToken, setUserAccessToken } from "~/lib/auth/microsoft";
+import { getUserAccessToken, setUserAccessToken, getGraphClient } from "~/lib/auth/microsoft";
 import { getClientEmails } from "~/lib/client-reports/email-fetcher";
 import { calculateEmailProcessingParams } from "~/lib/ai/model-info";
 import { env } from "~/lib/env";
@@ -155,6 +155,18 @@ export async function POST(request: Request) {
       // Continue with original dates if normalization fails
     }
     
+    // Get userId from Microsoft Graph
+    let userId = undefined;
+    try {
+      const client = getGraphClient();
+      if (client) {
+        const userInfo = await client.api('/me').select('mail,userPrincipalName').get();
+        userId = userInfo.mail || userInfo.userPrincipalName || undefined;
+      }
+    } catch (err) {
+      console.error('Summarize API - Error getting userId from Graph:', err);
+    }
+    
     // Get emails from database AND Microsoft Graph if needed
     let emailResult;
     try {
@@ -170,7 +182,8 @@ export async function POST(request: Request) {
         clientEmails: clientEmails,
         maxResults: maxFetchLimit,
         searchQuery: data.searchQuery,
-        useVectorSearch: data.useVectorSearch || false
+        useVectorSearch: data.useVectorSearch || false,
+        userId // pass userId for filtering
       });
       
       // Check if we have emails

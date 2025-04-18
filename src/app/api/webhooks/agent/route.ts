@@ -62,15 +62,16 @@ export async function POST(request: Request) {
       const labels = JSON.stringify(result.object.labels || []);
       const cc = result.object.cc || "";
       const bcc = result.object.bcc || "";
+      const user_id = result.object.user_id || null; // Set user_id from result or context
       
       // Insert into database
       await db.connection.query(`
         INSERT INTO messages (
           id, subject, "from", "to", date, body, attachments, 
-          created_at, updated_at, summary, labels, cc, bcc
+          created_at, updated_at, summary, labels, cc, bcc, user_id
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, 
-          NOW(), NOW(), $8, $9, $10, $11
+          NOW(), NOW(), $8, $9, $10, $11, $12
         )
         ON CONFLICT (id) DO UPDATE SET
           subject = $2,
@@ -83,10 +84,11 @@ export async function POST(request: Request) {
           summary = $8,
           labels = $9,
           cc = $10,
-          bcc = $11
+          bcc = $11,
+          user_id = $12
       `, [
         id, subject, from, to, date, body, attachments,
-        summary, labels, cc, bcc
+        summary, labels, cc, bcc, user_id
       ]);
 
       return NextResponse.json({
