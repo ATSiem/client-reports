@@ -3,11 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # Port 3000 is only exposed within the Docker network, not to the host
-    # ports:
-    #  - "3000:3000"
+    # Expose port 3000 when running with the "direct" (local) or "dev" profile.
+    profiles: ["direct", "dev"]
+    ports:
+      - "3000:3000"
     env_file:
       - .env
+    environment:
+      - NODE_ENV=production
     depends_on:
       db:
         condition: service_healthy
@@ -17,7 +20,6 @@ services:
       - .env
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=email_agent
     ports:
       - "5432:5432"
@@ -29,6 +31,8 @@ services:
       timeout: 5s
       retries: 5
   caddy:
+    # Caddy only runs when the 'prod' profile is active
+    profiles: ["prod"]
     build:
       context: .
       dockerfile: Dockerfile.caddy

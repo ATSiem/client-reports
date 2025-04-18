@@ -1,8 +1,10 @@
 #!/bin/bash
 
-# Load environment variables from .env
+# Load environment variables from .env but allow overriding below
 set -a # automatically export all variables
 source .env
+# Force production mode for this deploy regardless of .env default
+export NODE_ENV=production
 set +a # stop automatically exporting
 
 echo "===== DEPLOYING PRODUCTION APPLICATION ====="
@@ -14,8 +16,17 @@ echo "POSTGRES_DB = ${POSTGRES_DB}"
 echo "POSTGRES_PASSWORD = [HIDDEN]"
 
 echo "===== BUILDING APPLICATION ====="
-echo "Building production Docker container with configuration..."
-docker compose build --no-cache
+echo "Building production Docker container (profile=prod) with fresh layers..."
+
+if [ "$SKIP_CADDY" = "true" ]; then
+  echo "SKIP_CADDY=true → tearing down existing stack (including Caddy, orphans, volumes)…"
+  docker compose down --remove-orphans --volumes || true
+  COMPOSE_PROFILES="--profile direct"
+else
+  COMPOSE_PROFILES="--profile prod"
+fi
+
+docker compose $COMPOSE_PROFILES build --no-cache
 
 if [ $? -eq 0 ]; then
   echo "Docker build completed successfully!"
@@ -25,8 +36,8 @@ else
 fi
 
 echo "===== STARTING APPLICATION ====="
-echo "Starting containers with configuration from .env..."
-docker compose up --no-build -d
+# Bring up the stack with the 'prod' profile activated (includes Caddy)
+docker compose $COMPOSE_PROFILES up --no-build -d
 
 if [ $? -ne 0 ]; then
   echo "Application failed to start! Check the logs above."
