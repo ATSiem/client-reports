@@ -1,15 +1,17 @@
+// TODO: This test must be updated to use a dedicated test database.
+// It is currently unsafe to run against production or shared dev databases.
+
+// IMPORTANT: Load environment variables before any imports that use them
+require('dotenv').config({ path: '.env' });
+
 // PostgreSQL database connection tests
 const { Pool } = require('pg');
-require('dotenv').config({ path: '.env' });
+const { getConnectionString } = require('../src/lib/db/index');
 
 // Function to check if database is accessible
 async function isDatabaseAccessible() {
-  let connectionString = process.env.DATABASE_URL;
+  let connectionString = getConnectionString();
   if (!connectionString) return false;
-  
-  // When running tests on host machine, replace 'db' with 'localhost'
-  // This allows tests to connect to Docker-containerized database from host
-  connectionString = connectionString.replace(/(@|\/\/)(db)(:|\/)/, '$1localhost$3');
   
   console.log('Attempting to connect to database:', connectionString.replace(/:[^:]*@/, ':****@'));
   
@@ -39,26 +41,16 @@ async function isDatabaseAccessible() {
 
 describe('Database Connection Tests', () => {
   let pool;
-  let dbAccessible = false;
-  let connectionString = process.env.DATABASE_URL;
+  let connectionString = getConnectionString();
   
   beforeAll(async () => {
     console.log('Testing PostgreSQL database connection...');
-    
-    // Check if database is accessible before proceeding
-    dbAccessible = await isDatabaseAccessible();
-    
-    if (dbAccessible) {
-      // When running tests on host machine, replace 'db' with 'localhost'
-      connectionString = connectionString.replace(/(@|\/\/)(db)(:|\/)/, '$1localhost$3');
-      
-      // Get database connection string (for diagnostic purposes only)
-      const sanitizedConnectionString = connectionString?.replace(/:[^:]*@/, ':****@');
-      console.log('Using Database URL:', sanitizedConnectionString);
-      
-      // Create a connection pool
-      pool = new Pool({ connectionString });
-    }
+    // Always attempt to connect to the database
+    // Get database connection string (for diagnostic purposes only)
+    const sanitizedConnectionString = connectionString?.replace(/:[^:]*@/, ':****@');
+    console.log('Using Database URL:', sanitizedConnectionString);
+    // Create a connection pool
+    pool = new Pool({ connectionString });
   });
   
   afterAll(async () => {
@@ -68,66 +60,45 @@ describe('Database Connection Tests', () => {
     }
   });
 
-  // Skip all tests if database is not accessible
-  if (!dbAccessible) {
-    beforeAll(() => {
-      console.warn('\n⚠️ SKIPPING DATABASE TESTS: Cannot connect to database');
-      console.warn('These tests require a running database container.');
-      console.warn('Make sure deploy-prod.sh has been run and the database is accessible.\n');
-    });
-    
-    test.skip('can connect to database', () => {});
-    test.skip('database has required tables', () => {});
-    test.skip('can query clients table', () => {});
-    test.skip('client schema includes user_id column', () => {});
-    
-  } else {
-    // Normal test cases - only run if database is accessible
-    test('can connect to database', async () => {
-      // Basic connection test
-      const result = await pool.query('SELECT 1 as connected');
-      expect(result.rows[0].connected).toBe(1);
-    });
-    
-    test('database has required tables', async () => {
-      // Check if required tables exist
-      const result = await pool.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-          AND table_name IN ('clients', 'messages', 'report_templates', 'report_feedback')
-      `);
-      
-      const tableNames = result.rows.map(row => row.table_name);
-      
-      // Check for required tables
-      expect(tableNames).toContain('clients');
-      expect(tableNames).toContain('messages');
-      expect(tableNames).toContain('report_templates');
-      expect(tableNames).toContain('report_feedback');
-    });
-    
-    test('can query clients table', async () => {
-      // Test query on clients table
-      const result = await pool.query('SELECT COUNT(*) as count FROM clients');
-      
-      // Convert PostgreSQL count string to number
-      const count = parseInt(result.rows[0].count, 10);
-      
-      // Just verify we can query the table
-      expect(count).toBeGreaterThanOrEqual(0);
-    });
-    
-    test('client schema includes user_id column', async () => {
-      // Check if user_id column exists in clients table
-      const result = await pool.query(`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'clients' AND column_name = 'user_id'
-      `);
-      
-      expect(result.rows.length).toBe(1);
-      expect(result.rows[0].column_name).toBe('user_id');
-    });
-  }
+  test('can connect to database', async () => {
+    // Basic connection test
+    const result = await pool.query('SELECT 1 as connected');
+    expect(result.rows[0].connected).toBe(1);
+  });
+  
+  test('database has required tables', async () => {
+    // Check if required tables exist
+    const result = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+        AND table_name IN ('clients', 'messages', 'report_templates', 'report_feedback')
+    `);
+    const tableNames = result.rows.map(row => row.table_name);
+    // Check for required tables
+    expect(tableNames).toContain('clients');
+    expect(tableNames).toContain('messages');
+    expect(tableNames).toContain('report_templates');
+    expect(tableNames).toContain('report_feedback');
+  });
+  
+  test('can query clients table', async () => {
+    // Test query on clients table
+    const result = await pool.query('SELECT COUNT(*) as count FROM clients');
+    // Convert PostgreSQL count string to number
+    const count = parseInt(result.rows[0].count, 10);
+    // Just verify we can query the table
+    expect(count).toBeGreaterThanOrEqual(0);
+  });
+  
+  test('client schema includes user_id column', async () => {
+    // Check if user_id column exists in clients table
+    const result = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'clients' AND column_name = 'user_id'
+    `);
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0].column_name).toBe('user_id');
+  });
 }); 
