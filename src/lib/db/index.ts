@@ -4,6 +4,16 @@ import * as schema from "./schema";
 import { env } from "~/lib/env";
 export * from "drizzle-orm";
 
+// IMPORTANT: If you use getConnectionString in tests or scripts, ensure dotenv is loaded BEFORE importing this function.
+export function getConnectionString() {
+  let connectionString = env.DATABASE_URL;
+  // Replace 'db' with 'localhost' for local development (outside Docker)
+  if (process.env.NODE_ENV !== 'production' && typeof window === 'undefined') {
+    connectionString = connectionString.replace(/(@|\/\/)(db)(:|\/)/, '$1localhost$3');
+  }
+  return connectionString;
+}
+
 // Simple database connection class to avoid circular dependencies
 class DbConnection {
   pool: Pool | null = null;
@@ -19,19 +29,12 @@ class DbConnection {
       console.log('Initializing database connection...');
       console.log('Database URL:', env.DATABASE_URL?.replace(/(:.*@)/, ':****@'));
       
-      // Helper to get the correct database connection string
-      function getConnectionString() {
-        let connectionString = env.DATABASE_URL;
-        // Replace 'db' with 'localhost' for local development (outside Docker)
-        if (process.env.NODE_ENV !== 'production' && typeof window === 'undefined') {
-          connectionString = connectionString.replace(/(@|\/\/)(db)(:|\/)/, '$1localhost$3');
-        }
-        return connectionString;
-      }
+      // Use the exported getConnectionString
+      const connectionString = getConnectionString();
       
       // Create PostgreSQL connection pool
       this.pool = new Pool({
-        connectionString: getConnectionString(),
+        connectionString,
       });
       
       // Create Drizzle instance with schema

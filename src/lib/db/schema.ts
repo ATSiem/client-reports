@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
-import { customVector } from "@useverk/drizzle-pgvector";
 
 export const messages = pgTable("messages", {
   id: text("id").primaryKey(),
@@ -20,8 +19,6 @@ export const messages = pgTable("messages", {
   labels: jsonb("labels").notNull().$type<string[]>(), // Use native JSON array
   cc: text("cc").default(""),
   bcc: text("bcc").default(""),
-  // For vector search
-  embedding: customVector("embedding", { dimensions: 1536 }),
   processedForVector: boolean("processed_for_vector").default(false),
   userId: text("user_id"), // Associate messages with specific users
 });
