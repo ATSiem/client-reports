@@ -14,8 +14,13 @@ export async function POST(request: NextRequest) {
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? parseInt(limitParam, 10) : undefined;
     
-    // Queue a task to process pending summaries
-    const taskId = queueBackgroundTask('summarize_emails', { limit });
+    // Extract userId from headers
+    const userId = request.headers.get('x-user-email');
+    if (!userId) {
+      return NextResponse.json({ error: 'Missing userId in X-User-Email header' }, { status: 401 });
+    }
+    // Queue a task to process pending summaries with userId
+    const taskId = queueBackgroundTask('summarize_emails', { userId, limit });
     
     return NextResponse.json({
       success: true,

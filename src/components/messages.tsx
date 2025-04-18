@@ -4,12 +4,13 @@ import { messages } from "~/lib/db/schema";
 import Link from "next/link";
 import { cn } from "~/lib/utils";
 
-const getMessages = async (userId?: string) => {
+const getMessages = async (userId: string) => {
   try {
+    if (!userId) throw new Error('userId is required to fetch messages');
     const allMessages = await db
       .select()
       .from(messages)
-      .where(userId ? { userId } : {})
+      .where({ userId })
       .orderBy(messages.createdAt);
 
     return allMessages;
@@ -21,10 +22,12 @@ const getMessages = async (userId?: string) => {
 
 export const Messages = async ({
   searchParams,
+  userId,
 }: {
   searchParams: { id?: string };
+  userId: string;
 }) => {
-  const messageList = await getMessages();
+  const messageList = await getMessages(userId);
   const selectedMessage =
     messageList.find((msg) => msg.id === searchParams.id) ?? messageList[0];
 

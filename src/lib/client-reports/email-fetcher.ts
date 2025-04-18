@@ -167,7 +167,7 @@ export async function getClientEmails(params: EmailParams) {
     const batchSize = process.env.EMAIL_PROCESSING_BATCH_SIZE ? 
       parseInt(process.env.EMAIL_PROCESSING_BATCH_SIZE) : 200;
     
-    queueBackgroundTask('process_new_emails', { limit: batchSize });
+    queueBackgroundTask('process_new_emails', { userId, limit: batchSize });
     
     // Try to fetch emails from Graph API if we have access
     let graphEmails = [];

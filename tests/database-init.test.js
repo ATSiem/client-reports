@@ -188,4 +188,25 @@ describe('Database Initialization', () => {
     expect(result.rows.length).toBeGreaterThan(0);
     expect(result.rows[0].column_name).toBe('user_id');
   });
+
+  test('should only return messages for the correct user (user isolation)', async () => {
+    // Clean up and insert test data
+    await pool.query('DELETE FROM messages');
+    // Insert messages for two users
+    await pool.query(`INSERT INTO messages (id, subject, "from", "to", date, body, attachments, created_at, updated_at, summary, labels, cc, bcc, processed_for_vector, user_id) VALUES
+      ('msg1', 'Subject 1', 'a@example.com', 'b@example.com', '2024-01-01', 'Body 1', '[]', NOW(), NOW(), 'Summary 1', '[]', '', '', false, 'user1@example.com'),
+      ('msg2', 'Subject 2', 'c@example.com', 'd@example.com', '2024-01-02', 'Body 2', '[]', NOW(), NOW(), 'Summary 2', '[]', '', '', false, 'user2@example.com')
+    `);
+    // Query as user1
+    const user1Messages = await pool.query('SELECT * FROM messages WHERE user_id = $1', ['user1@example.com']);
+    expect(user1Messages.rows.length).toBe(1);
+    expect(user1Messages.rows[0].id).toBe('msg1');
+    // Query as user2
+    const user2Messages = await pool.query('SELECT * FROM messages WHERE user_id = $1', ['user2@example.com']);
+    expect(user2Messages.rows.length).toBe(1);
+    expect(user2Messages.rows[0].id).toBe('msg2');
+    // Query as a random user (should get zero)
+    const user3Messages = await pool.query('SELECT * FROM messages WHERE user_id = $1', ['user3@example.com']);
+    expect(user3Messages.rows.length).toBe(0);
+  });
 }); 

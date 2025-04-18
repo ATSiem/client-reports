@@ -16,8 +16,14 @@ export async function POST(request: Request) {
         );
       }
 
-      // Queue the background task
-      const id = queueBackgroundTask(taskType, params || {});
+      // Extract userId from headers
+      const userId = request.headers.get('x-user-email');
+      if (!userId) {
+        return NextResponse.json({ error: 'Missing userId in X-User-Email header' }, { status: 401 });
+      }
+
+      // Queue the background task with userId
+      const id = queueBackgroundTask(taskType, { ...params, userId });
       
       return NextResponse.json({
         success: true,

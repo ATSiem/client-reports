@@ -87,11 +87,12 @@ async function processNextTask() {
         break;
         
       case 'summarize_emails':
-        result = await processPendingSummaries(task.params.limit || 20);
+        result = await processPendingSummaries(task.params.userId, task.params.limit || 20);
         break;
         
       case 'process_new_emails':
         result = await processNewEmails(
+          task.params.userId,
           task.params.limit || 20, 
           task.params.emailIds || undefined
         );
@@ -129,17 +130,17 @@ async function processNextTask() {
 /**
  * Process emails that need summaries
  */
-async function processPendingSummaries(limit = 20) {
+async function processPendingSummaries(userId: string, limit = 20) {
   try {
     console.log('BackgroundProcessor - Processing pending summaries');
     
-    // Find emails that need summaries (where summary is empty or null)
+    if (!userId) throw new Error('userId is required for background processing');
     const emailsResult = await db.connection.query(`
       SELECT id, subject, "from", "to", date, body
       FROM messages
-      WHERE summary IS NULL OR summary = ''
-      LIMIT $1
-    `, [limit]);
+      WHERE (summary IS NULL OR summary = '') AND user_id = $1
+      LIMIT $2
+    `, [userId, limit]);
     
     const emails = emailsResult.rows;
     console.log(`BackgroundProcessor - Found ${emails.length} emails needing summaries`);
@@ -182,7 +183,7 @@ async function processPendingSummaries(limit = 20) {
 /**
  * Process new emails (both summary and embeddings)
  */
-async function processNewEmails(limit = 20, emailIds?: string[]) {
+async function processNewEmails(userId: string, limit = 20, emailIds?: string[]) {
   try {
     console.log('BackgroundProcessor - Processing new emails', 
       emailIds ? `(specific IDs: ${emailIds.length})` : `(limit: ${limit})`);
@@ -198,8 +199,8 @@ async function processNewEmails(limit = 20, emailIds?: string[]) {
           const email = await db.connection.query(`
             SELECT id, subject, "from", "to", date, body
             FROM messages
-            WHERE id = $1 AND (summary IS NULL OR summary = '')
-          `, [emailId]).then(result => result.rows[0]);
+            WHERE id = $1 AND (summary IS NULL OR summary = '') AND user_id = $2
+          `, [emailId, userId]).then(result => result.rows[0]);
           
           if (email) {
             // Generate and save summary
@@ -222,7 +223,7 @@ async function processNewEmails(limit = 20, emailIds?: string[]) {
       // Generate embeddings using the existing process
       // The processEmailEmbeddings function will pick up these emails
       // in its next batch since they're marked as needing processing
-      const embeddingResult = await processEmailEmbeddings(Math.min(emailIds.length, limit));
+      const embeddingResult = await processEmailEmbeddings(userId, Math.min(emailIds.length, limit));
       
       return {
         success: true,
@@ -232,10 +233,10 @@ async function processNewEmails(limit = 20, emailIds?: string[]) {
     } else {
       // Standard processing using the limit
       // First, generate summaries for emails that need them
-      const summaryResult = await processPendingSummaries(limit);
+      const summaryResult = await processPendingSummaries(userId, limit);
       
       // Then, generate embeddings for emails that need them
-      const embeddingResult = await processEmailEmbeddings(limit);
+      const embeddingResult = await processEmailEmbeddings(userId, limit);
       
       return {
         success: true,
