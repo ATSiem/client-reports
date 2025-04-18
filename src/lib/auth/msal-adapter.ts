@@ -182,11 +182,24 @@ export async function setActiveAccount(account: AccountInfo): Promise<void> {
 // Clear MSAL cache
 export function clearMsalCache(): void {
   if (typeof window === 'undefined') return;
-  
+
   // Clear sessionStorage items related to MSAL
   Object.keys(sessionStorage)
     .filter(key => key.startsWith('msal.'))
     .forEach(key => {
       sessionStorage.removeItem(key);
     });
+
+  // Remove all cookies starting with 'msal.'
+  if (typeof document !== 'undefined' && document.cookie) {
+    document.cookie.split(';').forEach(cookie => {
+      const eqPos = cookie.indexOf('=');
+      const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+      if (name.startsWith('msal.')) {
+        // Remove cookie for current path and root path
+        document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        document.cookie = `${name}=; path=/; domain=${window.location.hostname}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      }
+    });
+  }
 }

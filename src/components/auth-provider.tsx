@@ -329,25 +329,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Login function
   const login = async () => {
-    // Don't attempt login if configuration is missing
     if (configError) {
       setError('Authentication is not available due to missing configuration');
       return;
     }
-    
     setIsLoading(true);
     setError(null);
-    
     try {
-      // Clear any previous state
-      clearMsalCache();
-      sessionStorage.removeItem('msGraphToken');
-      sessionStorage.removeItem('userEmail');
-      sessionStorage.removeItem('msalAuthHash'); // Clear any saved auth hash
-      
-      // Redirect to Microsoft login
       await loginWithMicrosoft();
-      // The page will redirect, so no need to update state here
     } catch (e) {
       console.error('Login error:', e);
       setError('Login failed. Please try again.');

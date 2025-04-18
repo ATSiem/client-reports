@@ -165,4 +165,42 @@ describe('Authentication Cookie Persistence', () => {
     // Verify auth state is set to not authenticated
     expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
   });
+
+  test('should allow login after logout (regression test)', async () => {
+    // Mock successful login
+    msalAdapter.handleRedirectResult.mockResolvedValue({
+      account: { username: 'test@example.com' },
+      accessToken: 'test-access-token'
+    });
+    msalAdapter.getActiveAccount.mockResolvedValue({ username: 'test@example.com' });
+    msalAdapter.getAccessToken.mockResolvedValue('test-access-token');
+
+    // Render component and login
+    render(
+      <AuthProvider>
+        <TestAuthComponent />
+      </AuthProvider>
+    );
+    await act(async () => {});
+    expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
+
+    // Perform logout
+    fireEvent.click(screen.getByTestId('logout-button'));
+    await act(async () => {});
+    expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
+
+    // Mock login again (simulate new login)
+    msalAdapter.handleRedirectResult.mockResolvedValue({
+      account: { username: 'test@example.com' },
+      accessToken: 'test-access-token-2'
+    });
+    msalAdapter.getActiveAccount.mockResolvedValue({ username: 'test@example.com' });
+    msalAdapter.getAccessToken.mockResolvedValue('test-access-token-2');
+
+    // Perform login
+    fireEvent.click(screen.getByTestId('login-button'));
+    await act(async () => {});
+    expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
+    expect(document.cookie).toContain('msGraphToken=test-access-token-2');
+  });
 }); 
